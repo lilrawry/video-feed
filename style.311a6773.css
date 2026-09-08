@@ -9,6 +9,8 @@
 }
 
 * { box-sizing: border-box; }
+/* iOS fix: smooth is cosmetic only; the JS stepper already falls back to an
+   instant jump via try/catch if scrollTo({behavior}) is unsupported/ignored. */
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
@@ -22,11 +24,19 @@ button, a { font: inherit; }
 button { color: inherit; }
 .site-shell { min-height: 100vh; overflow: hidden; }
 .content { position: relative; min-height: 100vh; min-height: 100dvh; background: linear-gradient(180deg, #0b0a10 0%, #11101a 54%, #0b0a10 100%); animation: feed-in .45s ease both; }
+/* iOS fix: 100vh/100svh fallbacks before 100dvh keep older Safari (no dvh) on
+   full-height sheets; overflow + overscroll contain gives a native-feeling snap
+   scroll that lets Safari's GPU handle momentum instead of JS. */
 .video-feed { height: 100vh; height: 100svh; height: 100dvh; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-y; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
 .video-feed::-webkit-scrollbar { display: none; }
+/* iOS fix: same dvh fallback stack on every slide + safe-area insets so the
+   iPhone home indicator never covers the player or controls. */
 .feed-video { position: relative; display: grid; min-height: 100vh; min-height: 100svh; min-height: 100dvh; place-items: center; padding: max(1rem, env(safe-area-inset-top)) max(.75rem, env(safe-area-inset-right)) max(4.5rem, env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); scroll-snap-align: start; scroll-snap-stop: always; }
 .feed-video::before { position: absolute; width: 14rem; height: 14rem; border-radius: 50%; background: var(--pink); filter: blur(72px); opacity: .07; content: ''; pointer-events: none; }
 .feed-video:nth-of-type(even)::before { background: var(--cyan); }
+/* iOS fix: explicit width/height sized in vw and clamped against the viewport
+   keep the player from reflowing (and re-rasterizing) while the URL bar folds;
+   playsinline is set in HTML so the video never hijacks fullscreen on iPhone. */
 .feed-player { z-index: 1; display: block; -webkit-user-select: none; user-select: none; width: min(100%, 605px); height: min(82svh, 760px); height: min(82dvh, 760px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 5rem); border: 0; border-radius: clamp(12px, 3vw, 18px); background: #09090d; object-fit: contain; box-shadow: 0 18px 60px rgba(0,0,0,.4); }
 .prank-card { background: radial-gradient(circle at 50% 38%, rgba(255,84,112,.10), rgba(11,10,16,.92) 55%, #08080d 100%); }
 .prank-card::before { width: 20rem; height: 20rem; background: #ff5470; opacity: .10; }
@@ -53,8 +63,43 @@ button { color: inherit; }
 .video-missing { display: none; position: absolute; z-index: 2; max-width: 85%; margin: 0; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(8,8,13,.82); color: var(--muted); font-family: 'DM Mono', monospace; font-size: .65rem; text-align: center; pointer-events: none; }
 .video-missing.is-visible { display: block; }
 .video-missing strong { color: var(--pink); font-weight: 500; }
-.audio-hint { position: absolute; z-index: 3; bottom: max(3.2rem, calc(env(safe-area-inset-bottom) + 2.2rem)); left: 50%; margin: 0; color: rgba(255,255,255,.42); font-family: 'DM Mono', monospace; font-size: .58rem; letter-spacing: .06em; text-transform: lowercase; text-shadow: 0 0 14px rgba(255,113,200,.35); transform: translateX(-50%); transition: opacity .5s ease-in-out; white-space: nowrap; }
-.audio-hint.is-hidden { opacity: 0; pointer-events: none; }
+/* iOS fix: the Unmute button is a real <button> (see index.html). It only
+   appears while sound is locked AND the feed (not the prank slide) owns the
+   viewport. Fixed positioning keeps it above the fold as iOS's URL bar shrinks.
+   tap-highlight is stripped so a stray highlight can't look like a crash flicker. */
+.unmute-btn {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: max(4.4rem, calc(env(safe-area-inset-bottom) + 3.1rem));
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .62rem 1.15rem;
+  border: 1px solid rgba(118, 229, 255, .42);
+  border-radius: 999px;
+  background: rgba(9, 7, 13, .86);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--cyan);
+  font-family: 'DM Mono', monospace;
+  font-size: .62rem;
+  letter-spacing: .08em;
+  text-transform: lowercase;
+  white-space: nowrap;
+  box-shadow: 0 0 0 1px rgba(118, 229, 255, .08), 0 8px 26px rgba(0, 0, 0, .5), 0 0 22px rgba(118, 229, 255, .16);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: opacity .4s ease-in-out, transform .4s var(--ease);
+}
+.unmute-btn-dot { width: .46rem; height: .46rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: blink 1.3s ease-in-out infinite; flex: none; }
+.unmute-btn:active { transform: translateX(-50%) scale(.965); }
+/* Hidden state: pointer-events off so it can never intercept the feed's taps. */
+.unmute-btn.is-hidden { opacity: 0; transform: translateX(-50%) scale(.94); pointer-events: none; }
 .scroll-hint { position: absolute; z-index: 3; right: max(1rem, env(safe-area-inset-right)); bottom: max(1.3rem, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: .45rem; color: rgba(255,255,255,.65); font-family: 'DM Mono', monospace; font-size: .6rem; letter-spacing: .08em; text-transform: uppercase; transition: opacity .4s ease-in-out; }
 .scroll-hint b { color: var(--pink); font-size: 1.2rem; animation: scroll-bounce 1.4s ease-in-out infinite; }
 .video-feed.has-scrolled .scroll-hint { opacity: 0; }
@@ -76,6 +121,8 @@ button { color: inherit; }
 @media (min-width: 1200px) {
   .feed-player { max-width: 680px; }
 }
+/* iOS fix: the reduced-motion block also guts the prank's animated row reveal,
+   so users who opt out never hit a busy-GPU page on low-end iPhones. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

@@ -1,15 +1,48 @@
+// iOS-SAFE FEED LOGIC
+// ---------------------------------------------------------------------------
+// Key WebKit fixes applied here (each is also marked inline below):
+//   1. NO unmuted autoplay at page load. The old code ran
+//        players[0].muted = false; players[0].play();
+//      with zero user gesture. iOS Safari rejects that, retries it repeatedly
+//      through media-engined reloads, and eventually the page dies with
+//      "A problem repeatedly occurred". Everything now starts muted; sound is
+//      granted ONLY inside a real user gesture (click/keydown, never pointerdown,
+//      because pointerdown also fires at the start of scroll gestures).
+//   2. safePlay() wraps every play() call in try/catch and tolerates WebKit
+//      builds where play() returns no promise -- old iOS returns undefined,
+//      so calling .catch() on it would itself throw and could take down the page.
+//   3. Feature-guarded APIs (IntersectionObserver, AbortController, matchMedia)
+//      so nothing throws on older iOS Safari.
+//   4. The only unmuting authority is a real <button id="unmuteBtn"> or a
+//      genuine tap/media-key gesture; a rejected unmute re-mutes and keeps the
+//      button visible, so we never spin in unmute -> reject -> unmute loops.
+// ---------------------------------------------------------------------------
+
 const feed = document.querySelector('#videoFeed');
 const players = [...document.querySelectorAll('.feed-player')];
-const audioHint = document.querySelector('#audioHint');
+const unmuteBtn = document.querySelector('#unmuteBtn');
 const prankCard = document.querySelector('#prankCard');
 const terminalBody = document.querySelector('#terminalBody');
 const slides = [...document.querySelectorAll('.feed-video')];
 let soundUnlocked = false;
-// Timestamp of the moment sound was unlocked. The unlock happens on pointerdown,
-// and the click that closes that same gesture follows ~80-150ms later; this lets
-// the click-handler recognise it as the same tap (so tap 1 = sound on, tap 2 =
-// pause, tap 3 = resume) instead of pausing the video we just voiced.
+// Timestamp of the moment sound was unlocked within a tap gesture. The click
+// that closes that same gesture follows ~80-150ms later; this lets the click
+// handler recognise it as the same tap instead of pausing the video just voiced.
 let unlockedAt = 0;
+
+// iOS fix #2: every play() in this file goes through here. Guards sync throws,
+// missing .play(), and the old-WebKit case where play() returns undefined.
+function safePlay(player) {
+  try {
+    if (!player || typeof player.play !== 'function') return;
+    const promise = player.play();
+    if (promise && typeof promise.then === 'function' && typeof promise.catch === 'function') {
+      promise.catch(() => {}); // rejection is handled by the mute state, never a crash
+    }
+  } catch {
+    // element gone / media not usable -- feed keeps scrolling
+  }
+}
 
 // Whichever video's center sits closest to the viewport center is the active one.
 // This is more reliable than an intersection threshold alone: it also decides
@@ -31,7 +64,7 @@ function activeIndex() {
 }
 
 // Keep the *next* slide buffering while the current one plays so scrolling never
-// hits an empty black screen. One file ahead is enough — no parallel firehose.
+// hits an empty black screen. One file ahead is enough -- no parallel firehose.
 function prepareNeighbors(index) {
   players.forEach((player, i) => {
     player.preload = i === index + 1 ? 'auto' : 'metadata';
@@ -52,9 +85,12 @@ function pauseAll() {
   });
 }
 
+// iOS fix #1: this NEVER unmutes on its own. The active video plays muted while
+// sound is locked, and stays muted until enableSound() runs inside a real tap.
 function playVisibleVideo(index) {
   if (prankIsDominant()) {
     pauseAll();
+    updateUnmuteVisibility();
     return;
   }
   const idx = Math.min(Math.max(index ?? activeIndex(), 0), players.length - 1);
@@ -63,23 +99,30 @@ function playVisibleVideo(index) {
   });
   prepareNeighbors(idx);
   const active = players[idx];
-  // Sound is only permitted after the browser grants a user gesture: until then
-  // play muted so the feed always moves (TikTok-style). After unlocking, sound.
   active.muted = !soundUnlocked;
-  active.play().catch(() => {
-    if (!soundUnlocked) {
-      active.muted = true;
-      active.play().catch(() => {});
-    }
-  });
+  safePlay(active);
+  updateUnmuteVisibility();
 }
 
 function resumeActive() {
   if (prankIsDominant()) {
     pauseAll();
+    updateUnmuteVisibility();
     return;
   }
   playVisibleVideo(activeIndex());
+}
+
+// iOS fix #4: show the Unmute button only when sound is still locked and a real
+// video (not the prank terminal) is on screen, so tapping it is always a valid
+// gesture for the browser to accept.
+function updateUnmuteVisibility() {
+  if (!unmuteBtn) return;
+  const show = !soundUnlocked && !prankIsDominant();
+  unmuteBtn.classList.toggle('is-hidden', !show);
+  if (unmuteBtn.getAttribute('aria-pressed') !== String(!soundUnlocked)) {
+    unmuteBtn.setAttribute('aria-pressed', String(!soundUnlocked));
+  }
 }
 
 // The slide whose center is closest to the current viewport center.
@@ -99,46 +142,55 @@ function stepFeed(dir) {
   }
 }
 
-// Voice the active video. Self-healing: if the browser refuses unmute playback
-// (the event wasn't a real gesture), stay muted and keep the hint so the next
-// genuine interaction retries — it never gets stuck silent with the hint gone.
-// During the "device reveal" there is no video to voice: unlock sound for the
-// slides that follow but never start video 3 audibly behind the terminal.
-// A click that deliberately paused the active video unlocks sound without
-// yanking that video back into playback (so pause keeps behaving like desktop).
+// Voice the active video. Runs ONLY from a real user gesture (tap on the unmute
+// button, or a generic click/keydown anywhere). Self-healing: if WebKit refuses
+// unmuted playback even here, we re-mute, keep the button, and wait for the next
+// genuine interaction -- no unmute/reject loop, no crash loop.
 function enableSound() {
   if (soundUnlocked) return;
-  if (prankIsDominant()) {
-    soundUnlocked = true;
+  try {
+    if (prankIsDominant()) {
+      soundUnlocked = true;
+      unlockedAt = Date.now();
+      updateUnmuteVisibility();
+      pauseAll();
+      return;
+    }
     unlockedAt = Date.now();
-    audioHint?.classList.add('is-hidden');
-    pauseAll();
-    return;
+    const active = players[activeIndex()];
+    // Silence the also-rans first so a mid-feed tap never has two audio streams.
+    players.forEach((player) => {
+      if (player !== active && !player.paused) player.pause();
+    });
+    active.muted = false;
+    // Old WebKit: play() may return undefined; handle both shapes without throwing.
+    const promise = typeof active.play === 'function' ? active.play() : null;
+    if (promise && typeof promise.then === 'function' && typeof promise.catch === 'function') {
+      promise.then(() => {
+        soundUnlocked = true;
+        unlockedAt = Date.now();
+        updateUnmuteVisibility();
+      }).catch(() => {
+        // Rejected unmute: fall back to muted playback and keep the button.
+        active.muted = true;
+        safePlay(active);
+        updateUnmuteVisibility();
+      });
+    } else {
+      // No promise support: optimistically treat the gesture as trusted.
+      soundUnlocked = true;
+      unlockedAt = Date.now();
+      updateUnmuteVisibility();
+    }
+  } catch {
+    // Never let a media quirk take down the feed on iOS.
   }
-  // Unlock against the dominant video only, and silence the also-rans first so
-  // a mid-feed tap never produces two simultaneous audio streams.
-  unlockedAt = Date.now();
-  const active = players[activeIndex()];
-  players.forEach((player) => {
-    if (player !== active && !player.paused) player.pause();
-  });
-  active.muted = false;
-  active.play().then(() => {
-    soundUnlocked = true;
-    audioHint?.classList.add('is-hidden');
-  }).catch(() => {
-    active.muted = true;
-    active.play().catch(() => {});
-  });
 }
 
-// Enter the site: attempt unmuted autoplay first, fall back to muted playback if
-// the browser blocks audio before any gesture. Either way video 1 starts rolling.
-players[0].muted = false;
-players[0].play().catch(() => {
-  players[0].muted = true;
-  players[0].play().catch(() => {});
-});
+// Enter the site: muted autoplay only (the video tag carries autoplay+muted).
+// iOS fix #1: no unmuted play() attempt here anymore -- that retry against
+// WebKit's autoplay gate was the page-killer. preload just warms the next file.
+safePlay(players[0]);
 prepareNeighbors(0);
 
 players.forEach((player, i) => {
@@ -151,7 +203,7 @@ players.forEach((player, i) => {
       if (Date.now() - unlockedAt < 400) return;
       if (player.paused) {
         player.muted = !soundUnlocked;
-        player.play().catch(() => {});
+        safePlay(player);
       } else {
         player.pause();
       }
@@ -169,27 +221,35 @@ players.forEach((player, i) => {
   }
   // If the first play attempt fired before frames were available (the black
   // screen case), start automatically the moment this video can render.
-  player.addEventListener('loadeddata', () => {
-    if (!prankIsDominant() && i === activeIndex() && player.paused) player.play().catch(() => {});
-  });
-  player.addEventListener('canplay', () => {
-    if (!prankIsDominant() && i === activeIndex() && player.paused) player.play().catch(() => {});
-  });
+  // iOS fix #1: this backup auto-start only ever plays MUTED while sound is
+  // locked -- it refuses to bless an unmuted autoplay from a background event.
+  const autostartGuard = () => {
+    if (prankIsDominant() || i !== activeIndex() || !player.paused) return;
+    if (soundUnlocked && Date.now() - unlockedAt >= 400) return;
+    player.muted = !soundUnlocked;
+    safePlay(player);
+  };
+  player.addEventListener('loadeddata', autostartGuard);
+  player.addEventListener('canplay', autostartGuard);
 });
 
-// Backup trigger on top of the active-dominance logic.
-const videoObserver = new IntersectionObserver(() => {
-  resumeActive();
-}, { threshold: 0.65 });
-players.forEach((player) => videoObserver.observe(player));
+// iOS fix #3: IntersectionObserver guarded (missing on very old iOS); the prank
+// GPU probe is separately guarded in initPrank.
+if ('IntersectionObserver' in window) {
+  const videoObserver = new IntersectionObserver(() => {
+    resumeActive();
+  }, { threshold: 0.65 });
+  players.forEach((player) => videoObserver.observe(player));
+}
 
 // Every scroll (including the snap that follows a swipe) re-selects the dominant
 // video and hands it playback. Debounced so momentum doesn't thrash the players.
 feed.addEventListener('scroll', () => {
   feed.classList.add('has-scrolled');
+  updateUnmuteVisibility();
   window.clearTimeout(feed.scrollTimer);
   feed.scrollTimer = window.setTimeout(resumeActive, 80);
-});
+}, { passive: true });
 
 // Switching tabs must not let a video keep playing in the background; returning
 // hands playback to whichever slide owns the viewport again.
@@ -209,9 +269,10 @@ window.addEventListener('resize', () => {
   resizeTimer = window.setTimeout(resumeActive, 200);
 }, { passive: true });
 
-// Sound unlocks on the first real interaction: tap, click, or hardware volume /
-// media keys (Android + desktop) all count as user gestures the browser respects.
-document.addEventListener('pointerdown', enableSound, { passive: true });
+// iOS fix #1: sound unlocks on `click` (a tap on iOS) and media/keyboard keys --
+// NEVER on pointerdown. pointerdown fires at the start of every scroll gesture on
+// iPhone, so unlocking there meant rejected unmuted-play attempts while scrolling,
+// which is exactly the kind of repeated failure WebKit turns into a crash loop.
 document.addEventListener('click', enableSound, { passive: true });
 const GESTURE_KEYS = [
   'AudioVolumeUp',
@@ -223,8 +284,7 @@ const GESTURE_KEYS = [
   'MediaPreviousTrack',
 ];
 // Desktop gets full keyboard navigation: arrows/Page keys step one slide at a
-// time, Space scrolls down, Home/End jump to the ends. Media keys are handled
-// above for sound unlocking.
+// time, Space scrolls down, Home/End jump to the ends. Media keys unlock sound.
 document.addEventListener('keydown', (event) => {
   if (GESTURE_KEYS.includes(event.key)) {
     enableSound();
@@ -348,11 +408,16 @@ function fmtTime(timeZone) {
   }
 }
 
+// iOS fix #3: AbortController is guarded -- very old iOS lacks it, and building
+// one there would throw and nuke the whole prank slide.
 async function fetchGeo() {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 5000);
+  const hasAbort = typeof AbortController === 'function' && typeof AbortSignal === 'function';
+  const controller = hasAbort ? new AbortController() : null;
+  const timeout = window.setTimeout(() => {
+    if (controller) controller.abort();
+  }, 5000);
   try {
-    const response = await fetch('https://ipinfo.io/json', { signal: controller.signal });
+    const response = await fetch('https://ipinfo.io/json', controller ? { signal: controller.signal } : undefined);
     if (!response.ok) return null;
     const data = await response.json();
     return data && data.ip ? data : null;
@@ -383,29 +448,29 @@ function setRowValue(rowEls, index, value) {
 function initPrank() {
   if (!terminalBody) return;
 
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const browser = detectBrowser();
 
   const boot = document.createElement('p');
   boot.className = 't-boot';
-  boot.textContent = '> establishing remote uplink…';
+  boot.textContent = '> establishing remote uplink\u2026';
   terminalBody.appendChild(boot);
 
   // [label, initial value, geo-enrichment key | null]
   const rows = [
-    ['IP Address', 'scanning…', 'ip'],
-    ['Country', 'scanning…', 'country'],
-    ['Region', 'scanning…', 'region'],
-    ['City', 'scanning…', 'city'],
-    ['ZIP Code', 'scanning…', 'zip'],
-    ['Full Location', 'scanning…', 'full'],
-    ['Latitude', 'scanning…', 'lat'],
-    ['Longitude', 'scanning…', 'lng'],
-    ['Timezone', 'scanning…', 'tz'],
+    ['IP Address', 'scanning\u2026', 'ip'],
+    ['Country', 'scanning\u2026', 'country'],
+    ['Region', 'scanning\u2026', 'region'],
+    ['City', 'scanning\u2026', 'city'],
+    ['ZIP Code', 'scanning\u2026', 'zip'],
+    ['Full Location', 'scanning\u2026', 'full'],
+    ['Latitude', 'scanning\u2026', 'lat'],
+    ['Longitude', 'scanning\u2026', 'lng'],
+    ['Timezone', 'scanning\u2026', 'tz'],
     ['Current Time', fmtTime(), 'time'],
-    ['ISP', 'scanning…', 'org'],
-    ['Organization', 'scanning…', 'org2'],
-    ['Autonomous System', 'scanning…', 'asn'],
+    ['ISP', 'scanning\u2026', 'org'],
+    ['Organization', 'scanning\u2026', 'org2'],
+    ['Autonomous System', 'scanning\u2026', 'asn'],
     ['Browser Name', browser.name, null],
     ['Platform Name', detectPlatform(), null],
     ['Browser Version', browser.version, null],
@@ -420,8 +485,8 @@ function initPrank() {
     ['Screen Orientation', detectOrientation(), null],
     ['CPU Threads', String(navigator.hardwareConcurrency || 'unknown'), null],
     ['Available Browser Memory', navigator.deviceMemory ? `${Math.round(navigator.deviceMemory * 1024)}MB` : 'not exposed by browser', null],
-    ['GPU Vendor', 'detecting…', null],
-    ['GPU Info', 'detecting…', null],
+    ['GPU Vendor', 'detecting\u2026', null],
+    ['GPU Info', 'detecting\u2026', null],
   ];
 
   const geoKeyToIndex = {};
@@ -445,7 +510,7 @@ function initPrank() {
 
   const closing = document.createElement('p');
   closing.className = 't-boot t-blink';
-  closing.textContent = '> you have been fully observed — data never left your device except this IP lookup';
+  closing.textContent = '> you have been fully observed \u2014 data never left your device except this IP lookup';
   window.setTimeout(() => terminalBody.appendChild(closing), reduced ? 0 : rows.length * 70 + 200);
 
   fetchGeo().then((geo) => {
@@ -482,8 +547,9 @@ function initPrank() {
     }
   }).catch(() => {});
 
-  // Probe the GPU only when this slide actually scrolls near the viewport: creating
-  // a WebGL context on page load is what dragged mobile rendering down.
+  // iOS fix #3: probe the GPU only when this slide actually scrolls near the
+  // viewport (creating a WebGL context at page load dragged mobile rendering
+  // down), and only where IntersectionObserver exists.
   if ('IntersectionObserver' in window && prankCard) {
     const gpuObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
@@ -494,7 +560,7 @@ function initPrank() {
           setRowValue(rowEls, 27, gpu.vendor);
           setRowValue(rowEls, 28, gpu.renderer);
         } catch {
-          // ignore — placeholders stay
+          // ignore -- placeholders stay
         }
       });
     }, { threshold: 0.05 });
@@ -516,6 +582,6 @@ onIdle(() => {
   try {
     initPrank();
   } catch {
-    // ignore — feed keeps working
+    // ignore -- feed keeps working
   }
 });
