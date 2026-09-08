@@ -20,11 +20,18 @@
        `_headers` (Netlify/Cloudflare Pages compatible) so `frame-ancestors 'none'`
        and friends are enforced — a meta tag cannot express frame-ancestors, so the
        file bundles that protection for the hosted version. For local preview, run
-       `npx serve` (or `python -m http.server`) instead of double-clicking the file. -->
+       `npx serve` (or `python -m http.server`) instead of double-clicking the file.
+       
+       Cache-busting: `script.js` and `style.css` are the sources. Run `node build.mjs`
+       (or let Vercel via vercel.json) AFTER editing them. It writes content-hashed
+       copies (script.<hash>.js / style.<hash>.css), rewrites the two references below,
+       and regenerates `_headers`. Hashed assets get `immutable; max-age=31536000`,
+       index.html gets `no-cache` — so every visitor picks up changes automatically.
+       If that breaks references, the local copies are stale: re-run the build. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.19d256ed.css">
 </head>
 <body>
   <main class="site-shell">
@@ -60,6 +67,6 @@
     </section>
   </main>
 
-  <script src="script.js"></script>
+  <script src="script.42057bec.js"></script>
 </body>
 </html>

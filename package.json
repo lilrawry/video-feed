@@ -1,0 +1,9 @@
+{
+  "name": "about-me-video-feed",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Personal vertical video feed with a device-reveal prank slide.",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
