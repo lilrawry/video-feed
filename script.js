@@ -24,11 +24,11 @@ function activeIndex() {
   return best;
 }
 
-// Keep the next slide buffering while the current one plays so scrolling never
-// hits an empty black screen: the next video is already hot when you arrive.
+// Keep the *next* slide buffering while the current one plays so scrolling never
+// hits an empty black screen. One file ahead is enough — no parallel firehose.
 function prepareNeighbors(index) {
   players.forEach((player, i) => {
-    player.preload = i === 0 || i === index + 1 ? 'auto' : 'metadata';
+    player.preload = i === index + 1 ? 'auto' : 'metadata';
   });
 }
 
@@ -290,7 +290,6 @@ function initPrank() {
 
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const browser = detectBrowser();
-  const gpu = detectGPU();
 
   const boot = document.createElement('p');
   boot.className = 't-boot';
@@ -326,8 +325,8 @@ function initPrank() {
     ['Screen Orientation', detectOrientation(), null],
     ['CPU Threads', String(navigator.hardwareConcurrency || 'unknown'), null],
     ['Available Browser Memory', navigator.deviceMemory ? `${Math.round(navigator.deviceMemory * 1024)}MB` : 'not exposed by browser', null],
-    ['GPU Vendor', gpu.vendor, null],
-    ['GPU Info', gpu.renderer, null],
+    ['GPU Vendor', 'detecting…', null],
+    ['GPU Info', 'detecting…', null],
   ];
 
   const geoKeyToIndex = {};
@@ -386,7 +385,42 @@ function initPrank() {
         setRowValue(rowEls, index, 'lookup unavailable');
       });
     }
-  });
+  }).catch(() => {});
+
+  // Probe the GPU only when this slide actually scrolls near the viewport: creating
+  // a WebGL context on page load is what dragged mobile rendering down.
+  if ('IntersectionObserver' in window && prankCard) {
+    const gpuObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        gpuObserver.disconnect();
+        try {
+          const gpu = detectGPU();
+          setRowValue(rowEls, 27, gpu.vendor);
+          setRowValue(rowEls, 28, gpu.renderer);
+        } catch {
+          // ignore — placeholders stay
+        }
+      });
+    }, { threshold: 0.05 });
+    gpuObserver.observe(prankCard);
+  }
 }
 
-initPrank();
+function onIdle(callback) {
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(callback, { timeout: 2500 });
+  } else {
+    window.setTimeout(callback, 1500);
+  }
+}
+
+// Defer the prank entirely: it must never compete with video 1's startup, and a
+// bug in it must never take down the feed.
+onIdle(() => {
+  try {
+    initPrank();
+  } catch {
+    // ignore — feed keeps working
+  }
+});

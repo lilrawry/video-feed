@@ -22,17 +22,16 @@ body {
 button, a { font: inherit; }
 button { color: inherit; }
 .site-shell { min-height: 100vh; overflow: hidden; }
-.content { position: relative; min-height: 100vh; min-height: 100dvh; background: linear-gradient(180deg, #0b0a10 0%, #11101a 54%, #0b0a10 100%); isolation: isolate; animation: feed-in .7s var(--ease) both; }
-.content::after { position: fixed; inset: 0; z-index: 4; background: radial-gradient(ellipse at center, transparent 52%, rgba(2, 2, 6, .42) 100%); content: ''; pointer-events: none; }
+.content { position: relative; min-height: 100vh; min-height: 100dvh; background: linear-gradient(180deg, #0b0a10 0%, #11101a 54%, #0b0a10 100%); animation: feed-in .45s ease both; }
 .video-feed { height: 100vh; height: 100svh; height: 100dvh; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 .video-feed::-webkit-scrollbar { display: none; }
 .feed-video { position: relative; display: grid; min-height: 100vh; min-height: 100svh; min-height: 100dvh; place-items: center; padding: max(1rem, env(safe-area-inset-top)) max(.75rem, env(safe-area-inset-right)) max(4.5rem, env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); scroll-snap-align: start; scroll-snap-stop: always; }
-.feed-video::before { position: absolute; width: 16rem; height: 16rem; border-radius: 50%; background: var(--pink); filter: blur(100px); opacity: .08; content: ''; pointer-events: none; }
+.feed-video::before { position: absolute; width: 14rem; height: 14rem; border-radius: 50%; background: var(--pink); filter: blur(72px); opacity: .07; content: ''; pointer-events: none; }
 .feed-video:nth-of-type(even)::before { background: var(--cyan); }
-.feed-player { z-index: 1; display: block; width: min(100%, 605px); height: min(82svh, 760px); height: min(82dvh, 760px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 5rem); border: 0; border-radius: clamp(12px, 3vw, 18px); background: #09090d; object-fit: contain; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 18px 70px rgba(0,0,0,.4), 0 0 44px rgba(255,113,200,.10); }
+.feed-player { z-index: 1; display: block; width: min(100%, 605px); height: min(82svh, 760px); height: min(82dvh, 760px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 5rem); border: 0; border-radius: clamp(12px, 3vw, 18px); background: #09090d; object-fit: contain; box-shadow: 0 18px 60px rgba(0,0,0,.4); }
 .prank-card { background: radial-gradient(circle at 50% 38%, rgba(255,84,112,.10), rgba(11,10,16,.92) 55%, #08080d 100%); }
 .prank-card::before { width: 20rem; height: 20rem; background: #ff5470; opacity: .10; }
-.terminal { position: relative; z-index: 1; display: flex; flex-direction: column; width: min(94%, 780px); max-height: min(76dvh, 620px); border: 1px solid rgba(255,113,200,.28); border-radius: 16px; background: rgba(10,8,14,.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 0 42px rgba(255,113,200,.15), 0 18px 70px rgba(0,0,0,.45); overflow: hidden; }
+.terminal { position: relative; z-index: 1; display: flex; flex-direction: column; width: min(94%, 780px); max-height: min(76dvh, 620px); border: 1px solid rgba(255,113,200,.28); border-radius: 16px; background: rgba(9,7,13,.96); box-shadow: 0 14px 50px rgba(0,0,0,.5); overflow: hidden; }
 .terminal-bar { display: flex; align-items: center; gap: .45rem; padding: .65rem .95rem; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); font-family: 'DM Mono', monospace; font-size: .58rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .terminal-title { margin-left: .35rem; }
 .dot { width: .5rem; height: .5rem; border-radius: 50%; }
@@ -62,7 +61,7 @@ button { color: inherit; }
 .video-feed.has-scrolled .scroll-hint { opacity: 0; }
 
 @keyframes scroll-bounce { 50% { transform: translateY(5px); } }
-@keyframes feed-in { from { opacity: 0; transform: scale(.992); } to { opacity: 1; transform: scale(1); } }
+@keyframes feed-in { from { opacity: 0; } to { opacity: 1; } }
 
 @media (min-width: 700px) {
   .feed-video { padding: 2rem; }
