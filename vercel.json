@@ -1,5 +1,5 @@
 {
-  "$comment": "Stateless static site. Vercel clones the repo, runs `npm run build` (node build.mjs), and publishes the root. The build content-hashes script.js/style.css, rewrites index.html, and regenerates _headers so every deploy ships fresh, immutable asset URLs and revalidatable HTML — users get new code on the next load with no hard refresh.",
+  "comment": "Stateless static site. Vercel clones the repo, runs `npm run build` (node build.mjs), and publishes the root. The build content-hashes script.js/style.css, rewrites index.html, and regenerates _headers so every deploy ships fresh, immutable asset URLs and revalidatable HTML — users get new code on the next load with no hard refresh.",
   "framework": null,
   "buildCommand": "npm run build",
   "outputDirectory": "."
