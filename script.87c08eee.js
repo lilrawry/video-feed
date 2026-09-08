@@ -243,12 +243,13 @@ if ('IntersectionObserver' in window) {
 }
 
 // Every scroll (including the snap that follows a swipe) re-selects the dominant
-// video and hands it playback. Debounced so momentum doesn't thrash the players.
+// video and hands it playback. Debounced just enough to survive one fling frame
+// (50ms) so the next slide starts the instant it settles — the TikTok handoff.
 feed.addEventListener('scroll', () => {
   feed.classList.add('has-scrolled');
   updateUnmuteVisibility();
   window.clearTimeout(feed.scrollTimer);
-  feed.scrollTimer = window.setTimeout(resumeActive, 80);
+  feed.scrollTimer = window.setTimeout(resumeActive, 50);
 }, { passive: true });
 
 // Switching tabs must not let a video keep playing in the background; returning

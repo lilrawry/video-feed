@@ -8,10 +8,14 @@
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-* { box-sizing: border-box; }
-/* iOS fix: smooth is cosmetic only; the JS stepper already falls back to an
-   instant jump via try/catch if scrollTo({behavior}) is unsupported/ignored. */
-html { scroll-behavior: smooth; }
+* { box-sizing: border-box; scrollbar-width: none; -ms-overflow-style: none; }
+/* App-feel fix: hide EVERY scrollbar so there is no right-hand rail and the feed
+   reads as a full-screen app (like TikTok/Instagram), not a webpage. */
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
+/* Sticky-scroll fix: CSS `scroll-behavior: smooth` fights the scroll-snap
+   container on iOS and makes wheel/touch feeds feel weighted/sticky. Programmatic
+   steps (keyboard) do their own smooth scrollTo, so it is safe to remove. */
+html { scroll-behavior: auto; }
 body {
   margin: 0;
   min-width: 280px;
@@ -27,11 +31,11 @@ button { color: inherit; }
 /* iOS fix: 100vh/100svh fallbacks before 100dvh keep older Safari (no dvh) on
    full-height sheets; overflow + overscroll contain gives a native-feeling snap
    scroll that lets Safari's GPU handle momentum instead of JS. */
-.video-feed { height: 100vh; height: 100svh; height: 100dvh; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-y; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
-.video-feed::-webkit-scrollbar { display: none; }
-/* iOS fix: same dvh fallback stack on every slide + safe-area insets so the
-   iPhone home indicator never covers the player or controls. */
-.feed-video { position: relative; display: grid; min-height: 100vh; min-height: 100svh; min-height: 100dvh; place-items: center; padding: max(1rem, env(safe-area-inset-top)) max(.75rem, env(safe-area-inset-right)) max(4.5rem, env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); scroll-snap-align: start; scroll-snap-stop: always; }
+.video-feed { height: 100vh; height: 100svh; height: 100dvh; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch; touch-action: pan-y; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+/* App-feel fix: `scroll-snap-stop: always` forces a hard stop on every slide even
+   mid-fling, which is the "sticky" jam between slides. Default (`normal`) lets
+   the fling carry naturally, exactly like TikTok/Instagram. */
+.feed-video { position: relative; display: grid; min-height: 100vh; min-height: 100svh; min-height: 100dvh; place-items: center; padding: max(1rem, env(safe-area-inset-top)) max(.75rem, env(safe-area-inset-right)) max(4.5rem, env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); scroll-snap-align: start; }
 .feed-video::before { position: absolute; width: 14rem; height: 14rem; border-radius: 50%; background: var(--pink); filter: blur(72px); opacity: .07; content: ''; pointer-events: none; }
 .feed-video:nth-of-type(even)::before { background: var(--cyan); }
 /* iOS fix: explicit width/height sized in vw and clamped against the viewport
