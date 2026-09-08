@@ -65,18 +65,40 @@ function activeIndex() {
 
 // Keep the *next* slide buffering while the current one plays so scrolling never
 // hits an empty black screen. One file ahead is enough -- no parallel firehose.
+// Fix: never downgrade the preload of the video that is BECOMING active (preload
+// back to 'metadata' just before play() can leave it black and unbuffered).
 function prepareNeighbors(index) {
   players.forEach((player, i) => {
+    if (i === index) return; // active video keeps its buffered data
     player.preload = i === index + 1 ? 'auto' : 'metadata';
   });
 }
 
-// When the "device reveal" slide owns the viewport center, no video may play.
-function prankIsDominant() {
-  if (!prankCard || !prankCard.offsetParent) return false;
-  const bounds = prankCard.getBoundingClientRect();
-  const mid = window.innerHeight / 2;
-  return bounds.top <= mid && bounds.bottom > mid;
+// Start a video the safe way (YouTube/TikTok-web style): begin MUTED so play()
+// can never be rejected -- a rejected unmuted play() is exactly what leaves a
+// slide paused on a black frame until the user clicks it. If sound is already
+// unlocked, best-effort unmute once the video is really playing (restores the
+// "next video carries the sound" feel on desktop, never blocks on iOS).
+function startPlayer(player) {
+  try {
+    player.muted = true; // play() with muted can't be rejected -> no black slides
+    safePlay(player);
+    if (soundUnlocked) unmuteWhenPlaying(player);
+  } catch {
+    // never let a media quirk take down the feed
+  }
+}
+
+function unmuteWhenPlaying(player) {
+  let handled = false;
+  const unmute = () => {
+    if (handled) return;
+    handled = true;
+    player.removeEventListener('playing', unmute);
+    try { player.muted = false; } catch { /* stays muted, video still plays */ }
+  };
+  player.addEventListener('playing', unmute);
+  window.setTimeout(unmute, 200);
 }
 
 function pauseAll() {
@@ -85,8 +107,8 @@ function pauseAll() {
   });
 }
 
-// iOS fix #1: this NEVER unmutes on its own. The active video plays muted while
-// sound is locked, and stays muted until enableSound() runs inside a real tap.
+// iOS fix #1: this NEVER unmutes on its own. The active video always starts MUTED
+// (see startPlayer) and sound is granted only by enableSound() inside a real tap.
 function playVisibleVideo(index) {
   if (prankIsDominant()) {
     pauseAll();
@@ -98,9 +120,7 @@ function playVisibleVideo(index) {
     if (i !== idx && !player.paused) player.pause();
   });
   prepareNeighbors(idx);
-  const active = players[idx];
-  active.muted = !soundUnlocked;
-  safePlay(active);
+  startPlayer(players[idx]);
   updateUnmuteVisibility();
 }
 
@@ -202,8 +222,7 @@ players.forEach((player, i) => {
     if (!prankIsDominant() && i === activeIndex()) {
       if (Date.now() - unlockedAt < 400) return;
       if (player.paused) {
-        player.muted = !soundUnlocked;
-        safePlay(player);
+        startPlayer(player); // starts muted, unmutes once playing if unlocked
       } else {
         player.pause();
       }
@@ -221,13 +240,11 @@ players.forEach((player, i) => {
   }
   // If the first play attempt fired before frames were available (the black
   // screen case), start automatically the moment this video can render.
-  // iOS fix #1: this backup auto-start only ever plays MUTED while sound is
-  // locked -- it refuses to bless an unmuted autoplay from a background event.
+  // iOS fix: startPlayer begins MUTED so this background auto-start can never be
+  // rejected (a rejected unmuted autoplay is what leaves a slide black until tap).
   const autostartGuard = () => {
     if (prankIsDominant() || i !== activeIndex() || !player.paused) return;
-    if (soundUnlocked && Date.now() - unlockedAt >= 400) return;
-    player.muted = !soundUnlocked;
-    safePlay(player);
+    startPlayer(player);
   };
   player.addEventListener('loadeddata', autostartGuard);
   player.addEventListener('canplay', autostartGuard);
