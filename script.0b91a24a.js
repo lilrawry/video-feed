@@ -31,11 +31,15 @@ const unmuteBtn = document.querySelector('#unmuteBtn');
 const prankCard = document.querySelector('#prankCard');
 const terminalBody = document.querySelector('#terminalBody');
 const slides = [...document.querySelectorAll('.feed-video')];
-// Desktop split: PCs have a fine pointer and usually no touchscreen. Touch
-// devices (phones/tablets) keep the strict muted-until-real-tap behavior.
+// Desktop split: PCs (precise mouse, no touchscreen) get the friendlier sound
+// path. Touch devices (phones/tablets/touch laptops) keep the strict
+// muted-until-real-tap behavior. NOTE: 'ontouchstart' in window is truthy even
+// on mouse-only desktops in Chromium, so the real clues are maxTouchPoints and
+// the pointer:coarse media query -- never 'ontouchstart' alone.
 const prefersFinePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
-const touchCapable = 'ontouchstart' in window || (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0);
-const isDesktop = prefersFinePointer && !touchCapable;
+const hasCoarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+const touchPoints = typeof navigator.maxTouchPoints === 'number' ? navigator.maxTouchPoints : 0;
+const isDesktop = prefersFinePointer && !hasCoarsePointer && touchPoints === 0;
 let soundUnlocked = false;
 // Timestamp of the moment sound was unlocked within a tap/click gesture. The click
 // that closes that same gesture follows ~80-150ms later (or a mouse press ~0ms
@@ -92,9 +96,17 @@ function prepareNeighbors(index) {
 // slide paused on a black frame until the user clicks it. If sound is already
 // unlocked, best-effort unmute once the video is really playing (restores the
 // "next video carries the sound" feel on desktop, never blocks on iOS).
+// Idempotency fix: if the video is ALREADY rolling, we NEVER re-call play() or
+// force it mute (that cut/re-buffer was killing sound after unlock) -- we only
+// sync the mute flag to the current unlock state.
 function startPlayer(player) {
   try {
-    player.muted = true; // play() with muted can't be rejected -> no black slides
+    const alreadyPlaying = !!player && !player.paused;
+    if (alreadyPlaying) {
+      if (soundUnlocked && player.muted) player.muted = false; // audible, keep rolling
+      return;
+    }
+    player.muted = true; // muted play() can't be rejected -> no black slides
     safePlay(player);
     if (soundUnlocked) unmuteWhenPlaying(player);
   } catch {
@@ -114,6 +126,14 @@ function unmuteWhenPlaying(player) {
   window.setTimeout(unmute, 200);
 }
 
+// When the "device reveal" slide owns the viewport center, no video may play.
+function prankIsDominant() {
+  if (!prankCard || !prankCard.offsetParent) return false;
+  const bounds = prankCard.getBoundingClientRect();
+  const mid = window.innerHeight / 2;
+  return bounds.top <= mid && bounds.bottom > mid;
+}
+
 function pauseAll() {
   players.forEach((player) => {
     if (!player.paused) player.pause();
@@ -122,13 +142,30 @@ function pauseAll() {
 
 // iOS fix #1: this NEVER unmutes on its own. The active video always starts MUTED
 // (see startPlayer) and sound is granted only by enableSound() inside a real tap.
+// Idempotency fix: playVisibleVideo only acts when the dominant slide CHANGED (or
+// is paused). Repeated scroll/IntersectionObserver re-fires for the SAME slide no
+// longer re-start/re-mute the video that's already on screen and playing.
+let currentIndex = -1;
+let intentionallyPaused = false;
 function playVisibleVideo(index) {
   if (prankIsDominant()) {
     pauseAll();
+    currentIndex = -1;
     updateUnmuteVisibility();
     return;
   }
   const idx = Math.min(Math.max(index ?? activeIndex(), 0), players.length - 1);
+  if (idx === currentIndex) {
+    const active = players[idx];
+    // Same slide owns the viewport: if it's rolling, do nothing; if the user
+    // deliberately paused it (click toggle), respect that pause.
+    if ((active && !active.paused) || intentionallyPaused) {
+      updateUnmuteVisibility();
+      return;
+    }
+  }
+  intentionallyPaused = false;
+  currentIndex = idx;
   players.forEach((player, i) => {
     if (i !== idx && !player.paused) player.pause();
   });
@@ -190,6 +227,7 @@ function enableSound() {
       return;
     }
     unlockedAt = Date.now();
+    intentionallyPaused = false;
     const active = players[activeIndex()];
     // Silence the also-rans first so a mid-feed tap never has two audio streams.
     players.forEach((player) => {
@@ -262,8 +300,10 @@ players.forEach((player, i) => {
     if (!prankIsDominant() && i === activeIndex()) {
       if (Date.now() - unlockedAt < 400) return;
       if (player.paused) {
+        intentionallyPaused = false;
         startPlayer(player); // starts muted, unmutes once playing if unlocked
       } else {
+        intentionallyPaused = true;
         player.pause();
       }
       return;
