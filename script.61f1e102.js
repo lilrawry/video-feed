@@ -1,13 +1,13 @@
 // iOS-SAFE FEED LOGIC
 // ---------------------------------------------------------------------------
 // Key WebKit fixes applied here (each is also marked inline below):
-//   1. NO unmuted autoplay at page load. The old code ran
+//   1. NO unmuted autoplay at page load on touch devices. The old code ran
 //        players[0].muted = false; players[0].play();
 //      with zero user gesture. iOS Safari rejects that, retries it repeatedly
 //      through media-engined reloads, and eventually the page dies with
-//      "A problem repeatedly occurred". Everything now starts muted; sound is
-//      granted ONLY inside a real user gesture (click/keydown, never pointerdown,
-//      because pointerdown also fires at the start of scroll gestures).
+//      "A problem repeatedly occurred". On phones/tablets everything starts
+//      muted; sound is granted ONLY inside a real user gesture (click/keydown,
+//      never pointerdown, because pointerdown also fires at scroll start).
 //   2. safePlay() wraps every play() call in try/catch and tolerates WebKit
 //      builds where play() returns no promise -- old iOS returns undefined,
 //      so calling .catch() on it would itself throw and could take down the page.
@@ -16,6 +16,13 @@
 //   4. The only unmuting authority is a real <button id="unmuteBtn"> or a
 //      genuine tap/media-key gesture; a rejected unmute re-mutes and keeps the
 //      button visible, so we never spin in unmute -> reject -> unmute loops.
+//   DESKTOP SPLIT: PCs get a separate, friendlier path (isDesktop below):
+//      - audible autoplay is *attempted* on entry (desktop browsers may allow it
+//        via MEI), falling back to muted playback if blocked;
+//      - a mouse press (pointerdown) unlocks sound immediately -- safe on desktop
+//        because wheel scroll never fires pointerdown (unlike touch swipes);
+//      - ANY key press (not just media keys) also unlocks sound.
+//   The mobile path is untouched so the working phone UX stays exactly as-is.
 // ---------------------------------------------------------------------------
 
 const feed = document.querySelector('#videoFeed');
@@ -24,10 +31,16 @@ const unmuteBtn = document.querySelector('#unmuteBtn');
 const prankCard = document.querySelector('#prankCard');
 const terminalBody = document.querySelector('#terminalBody');
 const slides = [...document.querySelectorAll('.feed-video')];
+// Desktop split: PCs have a fine pointer and usually no touchscreen. Touch
+// devices (phones/tablets) keep the strict muted-until-real-tap behavior.
+const prefersFinePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
+const touchCapable = 'ontouchstart' in window || (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0);
+const isDesktop = prefersFinePointer && !touchCapable;
 let soundUnlocked = false;
-// Timestamp of the moment sound was unlocked within a tap gesture. The click
-// that closes that same gesture follows ~80-150ms later; this lets the click
-// handler recognise it as the same tap instead of pausing the video just voiced.
+// Timestamp of the moment sound was unlocked within a tap/click gesture. The click
+// that closes that same gesture follows ~80-150ms later (or a mouse press ~0ms
+// on desktop via pointerdown); the click handler recognises it as the same gesture
+// instead of pausing the video just voiced.
 let unlockedAt = 0;
 
 // iOS fix #2: every play() in this file goes through here. Guards sync throws,
@@ -207,11 +220,38 @@ function enableSound() {
   }
 }
 
-// Enter the site: muted autoplay only (the video tag carries autoplay+muted).
-// iOS fix #1: no unmuted play() attempt here anymore -- that retry against
-// WebKit's autoplay gate was the page-killer. preload just warms the next file.
-safePlay(players[0]);
+// Enter the site.
+// Mobile: muted autoplay only (the video tag carries autoplay+muted) -- the
+// iOS-safe path the user confirmed working.
+// Desktop split: ATTEMPT audible autoplay on entry (desktop browsers often
+// allow it after Media Engagement); if the browser blocks it, fall back to
+// muted and let the first click/keypress unlock, exactly like on mobile.
 prepareNeighbors(0);
+if (isDesktop) {
+  try {
+    players[0].muted = false;
+    const entryPromise = typeof players[0].play === 'function' ? players[0].play() : null;
+    if (entryPromise && typeof entryPromise.then === 'function' && typeof entryPromise.catch === 'function') {
+      entryPromise.then(() => {
+        soundUnlocked = true;
+        unlockedAt = Date.now();
+        updateUnmuteVisibility();
+      }).catch(() => {
+        players[0].muted = true;
+        safePlay(players[0]);
+      });
+    } else {
+      soundUnlocked = true;
+      unlockedAt = Date.now();
+      updateUnmuteVisibility();
+    }
+  } catch {
+    players[0].muted = true;
+    safePlay(players[0]);
+  }
+} else {
+  safePlay(players[0]);
+}
 
 players.forEach((player, i) => {
   // Pausing/resuming the active video is the desktop habit people expect from a
@@ -287,11 +327,17 @@ window.addEventListener('resize', () => {
   resizeTimer = window.setTimeout(resumeActive, 200);
 }, { passive: true });
 
-// iOS fix #1: sound unlocks on `click` (a tap on iOS) and media/keyboard keys --
+// iOS fix #1 (mobile): sound unlocks on `click` (a tap) and media/keyboard keys --
 // NEVER on pointerdown. pointerdown fires at the start of every scroll gesture on
 // iPhone, so unlocking there meant rejected unmuted-play attempts while scrolling,
 // which is exactly the kind of repeated failure WebKit turns into a crash loop.
 document.addEventListener('click', enableSound, { passive: true });
+// Desktop split: a mouse PRESS is a real gesture and -- unlike a touch swipe --
+// never fires as a side effect of scrolling, so PCs can unlock the instant the
+// pointer goes down, then the same-gesture click is swallowed (see tap handler).
+if (isDesktop) {
+  document.addEventListener('pointerdown', enableSound, { passive: true });
+}
 const GESTURE_KEYS = [
   'AudioVolumeUp',
   'AudioVolumeDown',
@@ -303,12 +349,15 @@ const GESTURE_KEYS = [
 ];
 // Desktop gets full keyboard navigation: arrows/Page keys step one slide at a
 // time, Space scrolls down, Home/End jump to the ends. Media keys unlock sound.
+// Desktop split: ANY key press (not just media keys) is a gesture -- it unlocks
+// sound too, so "hit a key -> sound" behaves like a native app on PC.
 document.addEventListener('keydown', (event) => {
   if (GESTURE_KEYS.includes(event.key)) {
     enableSound();
     return;
   }
   if (event.altKey || event.ctrlKey || event.metaKey) return;
+  if (isDesktop) enableSound(); // any keypress on a PC counts as unlocking
   const key = event.key;
   if (key === 'ArrowDown' || key === 'PageDown' || key === ' ' || key === 'Spacebar') {
     event.preventDefault();
