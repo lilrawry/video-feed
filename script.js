@@ -37,8 +37,8 @@ function playVisibleVideo(index) {
   });
   prepareNeighbors(idx);
   const active = players[idx];
-  // Sound is only permitted after the visitor's first gesture: until then play
-  // muted so the feed always moves (TikTok-style). After the tap, full sound.
+  // Sound is only permitted after the browser grants a user gesture: until then
+  // play muted so the feed always moves (TikTok-style). After unlocking, sound.
   active.muted = !soundUnlocked;
   active.play().catch(() => {
     if (!soundUnlocked) {
@@ -52,13 +52,20 @@ function resumeActive() {
   playVisibleVideo(activeIndex());
 }
 
-function unlockSound() {
+// Voice the active video. Self-healing: if the browser refuses unmute playback
+// (the event wasn't a real gesture), stay muted and keep the hint so the next
+// genuine interaction retries — it never gets stuck in a silent, hint-less state.
+function enableSound() {
   if (soundUnlocked) return;
-  soundUnlocked = true;
-  audioHint?.classList.add('is-hidden');
   const active = players[activeIndex()];
   active.muted = false;
-  active.play().catch(() => {});
+  active.play().then(() => {
+    soundUnlocked = true;
+    audioHint?.classList.add('is-hidden');
+  }).catch(() => {
+    active.muted = true;
+    active.play().catch(() => {});
+  });
 }
 
 // Enter the site: attempt unmuted autoplay first, fall back to muted playback if
@@ -72,6 +79,8 @@ prepareNeighbors(0);
 
 players.forEach((player, i) => {
   player.addEventListener('click', () => playVisibleVideo(i));
+  // Hardware volume changes (iOS / some WebViews) signal the visitor is engaged.
+  player.addEventListener('volumechange', enableSound);
   const missing = player.nextElementSibling;
   if (missing && missing.classList.contains('video-missing')) {
     player.addEventListener('error', () => missing.classList.add('is-visible'));
@@ -79,7 +88,7 @@ players.forEach((player, i) => {
     player.addEventListener('canplay', () => missing.classList.remove('is-visible'));
   }
   // If the first play attempt fired before frames were available (the black
-  // screen case), start automatically the moment this video can actually render.
+  // screen case), start automatically the moment this video can render.
   player.addEventListener('loadeddata', () => {
     if (i === activeIndex() && player.paused) player.play().catch(() => {});
   });
@@ -102,7 +111,19 @@ feed.addEventListener('scroll', () => {
   feed.scrollTimer = window.setTimeout(resumeActive, 80);
 });
 
-// First touch anywhere unlocks audio. Bound to pointer and click so Safari
-// WebViews (Discord in-app browser) that only trust classic taps still work.
-document.addEventListener('pointerdown', unlockSound, { once: true, passive: true });
-document.addEventListener('click', unlockSound, { once: true, passive: true });
+// Sound unlocks on the first real interaction: tap, click, or hardware volume /
+// media keys (Android + desktop) all count as user gestures the browser respects.
+document.addEventListener('pointerdown', enableSound, { passive: true });
+document.addEventListener('click', enableSound, { passive: true });
+const GESTURE_KEYS = [
+  'AudioVolumeUp',
+  'AudioVolumeDown',
+  'MediaPlayPause',
+  'MediaPlay',
+  'MediaStop',
+  'MediaNextTrack',
+  'MediaPreviousTrack',
+];
+document.addEventListener('keydown', (event) => {
+  if (GESTURE_KEYS.includes(event.key)) enableSound();
+});
