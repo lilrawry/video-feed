@@ -38,9 +38,12 @@ const videoObserver = new IntersectionObserver((entries) => {
 players.forEach((player) => {
   videoObserver.observe(player);
   player.addEventListener('click', () => playVisibleVideo(player));
-  player.addEventListener('loadeddata', () => {
-    player.nextElementSibling?.classList.add('is-hidden');
-  });
+  const missing = player.nextElementSibling;
+  if (missing && missing.classList.contains('video-missing')) {
+    player.addEventListener('error', () => missing.classList.add('is-visible'));
+    player.addEventListener('loadeddata', () => missing.classList.remove('is-visible'));
+    player.addEventListener('canplay', () => missing.classList.remove('is-visible'));
+  }
 });
 
 feed.addEventListener('scroll', () => {

@@ -28,8 +28,8 @@ button { color: inherit; }
 .feed-video { position: relative; display: grid; min-height: 100vh; min-height: 100svh; min-height: 100dvh; place-items: center; padding: max(1rem, env(safe-area-inset-top)) max(.75rem, env(safe-area-inset-right)) max(4.5rem, env(safe-area-inset-bottom)) max(.75rem, env(safe-area-inset-left)); scroll-snap-align: start; scroll-snap-stop: always; }
 .feed-video::before { position: absolute; width: 16rem; height: 16rem; border-radius: 50%; background: var(--pink); filter: blur(100px); opacity: .08; content: ''; pointer-events: none; }
 .feed-player { z-index: 1; display: block; width: min(100%, 605px); height: min(82svh, 760px); height: min(82dvh, 760px); max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 5rem); border: 0; border-radius: clamp(12px, 3vw, 18px); background: #09090d; object-fit: contain; box-shadow: 0 18px 70px rgba(0,0,0,.35); }
-.video-missing { position: absolute; z-index: 2; max-width: 85%; margin: 0; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(8,8,13,.82); color: var(--muted); font-family: 'DM Mono', monospace; font-size: .65rem; text-align: center; pointer-events: none; }
-.video-missing.is-hidden { display: none; }
+.video-missing { display: none; position: absolute; z-index: 2; max-width: 85%; margin: 0; padding: .8rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(8,8,13,.82); color: var(--muted); font-family: 'DM Mono', monospace; font-size: .65rem; text-align: center; pointer-events: none; }
+.video-missing.is-visible { display: block; }
 .video-missing strong { color: var(--pink); font-weight: 500; }
 .audio-hint { position: absolute; z-index: 3; bottom: max(3.2rem, calc(env(safe-area-inset-bottom) + 2.2rem)); left: 50%; margin: 0; color: rgba(255,255,255,.42); font-family: 'DM Mono', monospace; font-size: .58rem; letter-spacing: .06em; text-transform: lowercase; transform: translateX(-50%); transition: opacity .5s ease-in-out; white-space: nowrap; }
 .audio-hint.is-hidden { opacity: 0; pointer-events: none; }
