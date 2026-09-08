@@ -3,7 +3,13 @@ const players = [...document.querySelectorAll('.feed-player')];
 const audioHint = document.querySelector('#audioHint');
 const prankCard = document.querySelector('#prankCard');
 const terminalBody = document.querySelector('#terminalBody');
+const slides = [...document.querySelectorAll('.feed-video')];
 let soundUnlocked = false;
+// Timestamp of the moment sound was unlocked. The unlock happens on pointerdown,
+// and the click that closes that same gesture follows ~80-150ms later; this lets
+// the click-handler recognise it as the same tap (so tap 1 = sound on, tap 2 =
+// pause, tap 3 = resume) instead of pausing the video we just voiced.
+let unlockedAt = 0;
 
 // Whichever video's center sits closest to the viewport center is the active one.
 // This is more reliable than an intersection threshold alone: it also decides
@@ -76,12 +82,46 @@ function resumeActive() {
   playVisibleVideo(activeIndex());
 }
 
+// The slide whose center is closest to the current viewport center.
+function currentSlide() {
+  const h = feed.clientHeight || window.innerHeight;
+  return Math.min(slides.length - 1, Math.max(0, Math.round(feed.scrollTop / h)));
+}
+
+// One explicit slide up/down (keyboard): lands exactly where a swipe would.
+function stepFeed(dir) {
+  const h = feed.clientHeight || window.innerHeight;
+  const top = Math.min(slides.length - 1, Math.max(0, currentSlide() + dir)) * h;
+  try {
+    feed.scrollTo({ top, behavior: 'smooth' });
+  } catch {
+    feed.scrollTop = top;
+  }
+}
+
 // Voice the active video. Self-healing: if the browser refuses unmute playback
 // (the event wasn't a real gesture), stay muted and keep the hint so the next
 // genuine interaction retries — it never gets stuck silent with the hint gone.
+// During the "device reveal" there is no video to voice: unlock sound for the
+// slides that follow but never start video 3 audibly behind the terminal.
+// A click that deliberately paused the active video unlocks sound without
+// yanking that video back into playback (so pause keeps behaving like desktop).
 function enableSound() {
   if (soundUnlocked) return;
+  if (prankIsDominant()) {
+    soundUnlocked = true;
+    unlockedAt = Date.now();
+    audioHint?.classList.add('is-hidden');
+    pauseAll();
+    return;
+  }
+  // Unlock against the dominant video only, and silence the also-rans first so
+  // a mid-feed tap never produces two simultaneous audio streams.
+  unlockedAt = Date.now();
   const active = players[activeIndex()];
+  players.forEach((player) => {
+    if (player !== active && !player.paused) player.pause();
+  });
   active.muted = false;
   active.play().then(() => {
     soundUnlocked = true;
@@ -102,7 +142,23 @@ players[0].play().catch(() => {
 prepareNeighbors(0);
 
 players.forEach((player, i) => {
-  player.addEventListener('click', () => playVisibleVideo(i));
+  // Pausing/resuming the active video is the desktop habit people expect from a
+  // click; clicking any other one hands it playback directly, like TikTok. The
+  // click that closes the sound-unlock gesture is swallowed so it doesn't
+  // immediately pause the video it just voiced.
+  player.addEventListener('click', () => {
+    if (!prankIsDominant() && i === activeIndex()) {
+      if (Date.now() - unlockedAt < 400) return;
+      if (player.paused) {
+        player.muted = !soundUnlocked;
+        player.play().catch(() => {});
+      } else {
+        player.pause();
+      }
+      return;
+    }
+    playVisibleVideo(i);
+  });
   // Hardware volume changes (iOS / some WebViews) signal the visitor is engaged.
   player.addEventListener('volumechange', enableSound);
   const missing = player.nextElementSibling;
@@ -135,6 +191,24 @@ feed.addEventListener('scroll', () => {
   feed.scrollTimer = window.setTimeout(resumeActive, 80);
 });
 
+// Switching tabs must not let a video keep playing in the background; returning
+// hands playback to whichever slide owns the viewport again.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pauseAll();
+  } else if (!prankIsDominant()) {
+    playVisibleVideo(activeIndex());
+  }
+});
+
+// Orientation flips, safe-inset shifts and the iOS URL-bar collapse all move the
+// viewport mid-gesture: wait for things to settle, then re-select the active video.
+let resizeTimer;
+window.addEventListener('resize', () => {
+  window.clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(resumeActive, 200);
+}, { passive: true });
+
 // Sound unlocks on the first real interaction: tap, click, or hardware volume /
 // media keys (Android + desktop) all count as user gestures the browser respects.
 document.addEventListener('pointerdown', enableSound, { passive: true });
@@ -148,8 +222,29 @@ const GESTURE_KEYS = [
   'MediaNextTrack',
   'MediaPreviousTrack',
 ];
+// Desktop gets full keyboard navigation: arrows/Page keys step one slide at a
+// time, Space scrolls down, Home/End jump to the ends. Media keys are handled
+// above for sound unlocking.
 document.addEventListener('keydown', (event) => {
-  if (GESTURE_KEYS.includes(event.key)) enableSound();
+  if (GESTURE_KEYS.includes(event.key)) {
+    enableSound();
+    return;
+  }
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  const key = event.key;
+  if (key === 'ArrowDown' || key === 'PageDown' || key === ' ' || key === 'Spacebar') {
+    event.preventDefault();
+    stepFeed(1);
+  } else if (key === 'ArrowUp' || key === 'PageUp') {
+    event.preventDefault();
+    stepFeed(-1);
+  } else if (key === 'Home') {
+    event.preventDefault();
+    feed.scrollTop = 0;
+  } else if (key === 'End') {
+    event.preventDefault();
+    feed.scrollTop = feed.scrollHeight;
+  }
 });
 
 // ---- Device reveal (the "prank" slide) -----------------------------------------

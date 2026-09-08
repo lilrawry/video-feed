@@ -46,9 +46,11 @@ for (const file of readdirSync(root)) {
 writeFileSync(join(root, jsName), js);
 writeFileSync(join(root, cssName), css);
 
+// Match a bare OR an already-hashed reference: a rerun of this script must
+// re-point whichever `style.*.css` / `script.*.js` the previous build left.
 let html = readFileSync(join(root, 'index.html'), 'utf8');
-html = html.replace('"style.css"', `"${cssName}"`);
-html = html.replace('"script.js"', `"${jsName}"`);
+html = html.replace(/href="style(?:\.[a-f0-9]{8})?\.css"/, `href="${cssName}"`);
+html = html.replace(/src="script(?:\.[a-f0-9]{8})?\.js"/, `src="${jsName}"`);
 writeFileSync(join(root, 'index.html'), html);
 
 // Vercel _headers: patterns are matched by specificity first (exact filename >
