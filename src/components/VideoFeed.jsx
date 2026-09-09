@@ -8,6 +8,7 @@ const VIDEOS = [
   'videos/video-1.mp4',
   'videos/video-2.mp4',
   'videos/video-3.mp4',
+  'videos/video-4.mp4',
 ];
 
 const INTRO_SLIDES = 1;
@@ -19,9 +20,14 @@ export default function VideoFeed({ feedRef }) {
   // -1 when the prank slide wins, and intro slides just leave it beyond videos.
   const [activeSlide, setActiveSlide] = useState(0);
   const [hasScrolled, setHasScrolled] = useState(false);
-  const observerRef = useRef(null);
   const slideRefs = useRef([]);
+  const rafRef = useRef(0);
+  const activeSlideRef = useRef(0);
   const desktop = useIsDesktop();
+
+  useEffect(() => {
+    activeSlideRef.current = activeSlide;
+  }, [activeSlide]);
 
   const prankIndex = VIDEO_START + VIDEOS.length;
 
@@ -50,6 +56,15 @@ export default function VideoFeed({ feedRef }) {
     return best;
   }, []);
 
+  const resolveActive = useCallback(() => {
+    if (prankDominant()) {
+      if (activeSlideRef.current !== -1) setActiveSlide(-1);
+      return;
+    }
+    const next = findActiveSlide();
+    if (activeSlideRef.current !== next) setActiveSlide(next);
+  }, [prankDominant, findActiveSlide]);
+
   // Map an absolute slide index to the video card index, or -1 if not a video.
   const slideToVideo = useCallback((slide) => {
     if (slide >= VIDEO_START && slide < prankIndex) return slide - VIDEO_START;
@@ -60,74 +75,71 @@ export default function VideoFeed({ feedRef }) {
     const feed = feedRef.current;
     if (!feed) return;
 
-    let scrollTimer;
+    // rAF-throttled scroll detection: reacts on the very first frame of a scroll
+    // so playback hands off immediately (no 50ms debounce that a mobile fling
+    // outruns, which was leaving the next video paused until touched).
     const handler = () => {
       setHasScrolled(true);
-      window.clearTimeout(scrollTimer);
-      scrollTimer = window.setTimeout(() => {
-        if (prankDominant()) {
-          setActiveSlide(-1);
-        } else {
-          setActiveSlide(findActiveSlide());
-        }
-      }, 50);
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        resolveActive();
+      });
     };
 
     feed.addEventListener('scroll', handler, { passive: true });
+
+    // IntersectionObserver rooted at the feed is far more reliable than the
+    // default viewport root inside a scroll-snap container on mobile Safari.
+    let observer = null;
+    if ('IntersectionObserver' in window) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          let hasVisible = false;
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              hasVisible = true;
+              const idx = slideRefs.current.indexOf(entry.target);
+              if (idx >= 0 && activeSlideRef.current !== idx) setActiveSlide(idx);
+            }
+          });
+          if (!hasVisible) resolveActive();
+        },
+        { root: feed, threshold: 0.5 }
+      );
+      slideRefs.current.forEach((el) => {
+        if (el) observer.observe(el);
+      });
+    }
+
     return () => {
       feed.removeEventListener('scroll', handler);
-      window.clearTimeout(scrollTimer);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (observer) observer.disconnect();
     };
-  }, [feedRef, findActiveSlide, prankDominant]);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
-            const idx = slideRefs.current.indexOf(entry.target);
-            if (idx >= 0) setActiveSlide(idx);
-          }
-        });
-      },
-      { threshold: 0.65 }
-    );
-    observerRef.current = observer;
-
-    slideRefs.current.forEach((el) => {
-      if (el) observer.observe(el);
-    });
-
-    return () => observer.disconnect();
-  }, []);
+  }, [feedRef, resolveActive]);
 
   useEffect(() => {
     const handleVisibility = () => {
       if (document.hidden) return;
-      if (!prankDominant()) {
-        setActiveSlide(findActiveSlide());
-      }
+      resolveActive();
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [findActiveSlide, prankDominant]);
+  }, [resolveActive]);
 
   useEffect(() => {
     let resizeTimer;
     const handler = () => {
       window.clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(() => {
-        if (!prankDominant()) {
-          setActiveSlide(findActiveSlide());
-        }
-      }, 200);
+      resizeTimer = window.setTimeout(resolveActive, 200);
     };
     window.addEventListener('resize', handler, { passive: true });
     return () => {
       window.removeEventListener('resize', handler);
       window.clearTimeout(resizeTimer);
     };
-  }, [findActiveSlide, prankDominant]);
+  }, [resolveActive]);
 
   const setSlideRef = useCallback((i) => (el) => {
     slideRefs.current[i] = el;
@@ -150,11 +162,11 @@ export default function VideoFeed({ feedRef }) {
 
   const slides = [];
 
-  // Intro slide (half message, half preview of the first video)
+  // Intro slide (half message, half preview of a video that plays the song)
   for (let i = 0; i < INTRO_SLIDES; i++) {
     slides.push(
       <div className="feed-slide" key={`intro-${i}`} ref={setSlideRef(i)}>
-        <Intro nextVideo={VIDEOS[0]} />
+        <Intro nextVideo="videos/video-4.mp4" />
       </div>
     );
   }
