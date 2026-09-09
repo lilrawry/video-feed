@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { isCoarsePointer, prefersReducedMotion } from '../utils/deviceInfo';
 
 // Landing music player — Apple Music–style dynamic waveform player.
 // Plays the track from 1:42 and visualizes live audio through the Web Audio API.
@@ -23,19 +24,25 @@ export default function MusicPlayer() {
   const analyserRef = useRef(null);
   const rafRef = useRef(0);
   const canvasRef = useRef(null);
-  const reducedRef = useRef(false);
   const userStartedRef = useRef(false);
   const startedRef = useRef(false);
   const autoPausedRef = useRef(false);
   const visibleRef = useRef(true);
+  const coarseRef = useRef(false);
+  const mutedRef = useRef(false);
   const seedRef = useRef(null);
 
   const [playing, setPlaying] = useState(false);
+  // iOS: track stays muted-first; we show a tap overlay + muted badge until
+  // the user's first tap enables sound inside a trusted gesture.
+  const [needTap, setNeedTap] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [time, setTime] = useState(START_AT);
   const [duration, setDuration] = useState(0);
 
   const ensureAnalyser = useCallback((node) => {
-    if (!node || reducedRef.current) return;
+    if (!node) return;
+    if (prefersReducedMotion()) return; // waveform animation disabled
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
@@ -54,17 +61,22 @@ export default function MusicPlayer() {
     }
   }, []);
 
-  // Start the landing track from 1:42. Returns whether play() was initiated.
+  // Start the landing track from 1:42. mutedFirst => play silently (always
+  // allowed by browsers, even on iOS) so we can show the tap-to-enable-sound
+  // prompt. Returns the play() promise so callers can handle rejection.
   const startFromIntro = useCallback(
-    (audio) => {
-      if (!audio) return false;
+    (audio, mutedFirst = false) => {
+      if (!audio) return null;
+      try { audio.muted = !!mutedFirst; } catch {}
       ensureAnalyser(audio);
       if (audio.currentTime < START_AT - 100 || audio.readyState === 0) {
         try { audio.currentTime = START_AT; } catch {}
       }
-      const p = audio.play();
-      if (p && typeof p.catch === 'function') p.catch(() => {});
-      return true;
+      try {
+        return audio.play();
+      } catch {
+        return null;
+      }
     },
     [ensureAnalyser]
   );
@@ -133,8 +145,15 @@ export default function MusicPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
 
+    coarseRef.current = isCoarsePointer();
+    mutedRef.current = audio.muted;
+
     audio.addEventListener('timeupdate', () => setTime(audio.currentTime));
-    audio.addEventListener('play', () => { userStartedRef.current = true; startedRef.current = true; setPlaying(true); });
+    audio.addEventListener('volumechange', () => {
+      mutedRef.current = audio.muted;
+      setIsMuted(audio.muted);
+    });
+    audio.addEventListener('play', () => { userStartedRef.current = true; startedRef.current = true; setPlaying(true); setNeedTap(false); });
     audio.addEventListener('pause', () => setPlaying(false));
 
     // Hand off: pause the landing track the moment a feed video starts so the
@@ -152,45 +171,56 @@ export default function MusicPlayer() {
     // Dock action: start (or restart) the landing track from 1:42 on demand.
     const playCmd = () => {
       autoPausedRef.current = false;
-      startFromIntro(audio);
+      startFromIntro(audio, false);
+      setNeedTap(false);
     };
     window.addEventListener('aboutme:play-music', playCmd);
 
-    const reduced =
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    reducedRef.current = reduced;
-
+    // Mobile optimization: cap the waveform at ~30fps on touch devices
+    // (coarse pointer) by only drawing on every other rAF frame.
+    let rafTick = false; // eslint-disable-line prefer-const
+    const reduced = prefersReducedMotion();
     const draw = () => {
-      drawWaveform();
-      if (!reduced) rafRef.current = requestAnimationFrame(draw);
+      if (reduced) return; // animation disabled — draw once below
+      if (!coarseRef.current || (rafTick = !rafTick)) drawWaveform();
+      rafRef.current = requestAnimationFrame(draw);
     };
-    if (reduced) drawWaveform();
+    if (reduced) drawWaveform(); // single static frame for reduced-motion
     else rafRef.current = requestAnimationFrame(draw);
 
-    // ---- LAYER 1 — immediate autoplay attempt on every device. Browsers with
-    // an autoplay policy (or prior engagement) will start the track with sound
-    // right on load. On restrictions this Promise rejects and we fall through.
+    // ---- LAYER 1 — immediate autoplay attempt on every device. On touch
+    // devices we play muted-first (always allowed), then surface the
+    // tap-to-enable-sound prompt. On desktop we try with sound.
     const tryAutoplay = () => {
       if (audio.paused && autoPausedRef.current) return;
-      startFromIntro(audio);
+      const p = startFromIntro(audio, coarseRef.current);
+      if (p && p.catch && !coarseRef.current) {
+        // Blocked on sound: retry muted-first so at least the waveform shows.
+        p.catch(() => { if (audio.paused) startFromIntro(audio, true); });
+      }
     };
     if (audio.readyState >= 1) tryAutoplay();
     else audio.addEventListener('canplay', tryAutoplay, { once: true });
+
+    // iOS: if we're still muted (or blocked) one second in, prompt for a tap.
+    const tapTimer = window.setTimeout(() => {
+      if (audio.paused || audio.muted) setNeedTap(true);
+    }, 1000);
 
     // ---- LAYER 2 — one-time page gesture fallback. The very first click /
     // touch / keydown / scroll is a trusted user gesture, so retrying play()
     // inside it is always permitted with sound. Only starts while the landing
     // player is still on screen (so it never fights a playing video).
-    const gesture = (e) => {
+    const gesture = () => {
       // NOTE: we intentionally do NOT call preventDefault here. `play()` does
       // not need it, and preventDefault on touchstart/pointerdown would block
       // the very first scroll on mobile, breaking the feed.
       const ctx = audioCtxRef.current;
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
-      if (!audio.paused) return; // already rolling
+      if (!audio.paused && !audio.muted) return; // already rolling with sound
       if (autoPausedRef.current || !visibleRef.current) return; // hand off decided
-      if (!startedRef.current) startFromIntro(audio);
+      startFromIntro(audio, false); // inside a gesture => sound allowed
+      setNeedTap(false);
     };
     const opts = { capture: true, passive: true, once: true };
     document.addEventListener('pointerdown', gesture, opts);
@@ -200,6 +230,7 @@ export default function MusicPlayer() {
     document.addEventListener('scroll', gesture, { capture: true, passive: true, once: true });
 
     return () => {
+      window.clearTimeout(tapTimer);
       window.removeEventListener('aboutme:video-playing', handoff);
       window.removeEventListener('aboutme:play-music', playCmd);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -230,13 +261,26 @@ export default function MusicPlayer() {
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (audio.paused) {
-      // User explicitly asked to start — clear any hand-off state.
+    if (audio.paused || audio.muted) {
+      // User explicitly asked to start — clear any hand-off state and unmute
+      // inside this trusted click gesture.
       autoPausedRef.current = false;
-      startFromIntro(audio);
+      startFromIntro(audio, false);
+      setNeedTap(false);
     } else {
       audio.pause();
     }
+  }, [startFromIntro]);
+
+  // Tap on the overlay: enable sound inside the trusted gesture.
+  const enableSound = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    try { audio.muted = false; } catch {}
+    const ctx = audioCtxRef.current;
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    startFromIntro(audio, false);
+    setNeedTap(false);
   }, [startFromIntro]);
 
   const seek = useCallback((e) => {
@@ -311,7 +355,29 @@ export default function MusicPlayer() {
         </button>
       </div>
 
-      <audio ref={audioRef} src={SRC} preload="auto" playsInline onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)} />
+      {/* Muted badge: shown while the track plays silently (iOS/autoplay-blocked)
+          so users know sound is waiting on their tap. */}
+      {playing && isMuted && (
+        <span className="mp-muted-badge" title="Sound is off — tap to enable" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5zM16 9l6 6M22 9l-6 6" /></svg>
+        </span>
+      )}
+
+      {/* Tap-to-enable-sound overlay (iOS): appears if still muted/blocked 1s in. */}
+      {needTap && (
+        <button type="button" className="mp-tap" onClick={enableSound} aria-label="Tap to enable sound">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z" /></svg>
+          Tap to enable sound
+        </button>
+      )}
+
+      <audio
+        ref={audioRef}
+        src={SRC}
+        preload="auto"
+        playsInline
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+      />
     </div>
   );
 }

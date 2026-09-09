@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { SoundProvider, useSound } from './contexts/SoundContext';
 import VideoFeed from './components/VideoFeed';
 import UnmuteButton from './components/UnmuteButton';
+import Toast from './components/Toast';
 
 function AppInner() {
   const feedRef = useRef(null);
@@ -49,6 +50,7 @@ function AppInner() {
         <VideoFeed feedRef={feedRef} />
         <UnmuteButton />
       </section>
+      <Toast />
     </main>
   );
 }

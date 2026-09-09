@@ -45,56 +45,77 @@ export default function PrankTerminal() {
     return rowDefs;
   }, []);
 
+  // Lazy-load: this network + heavy work only starts when the terminal is
+  // near the viewport (so visiting the intro/videos doesn't fire an IP lookup).
   useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
+    const el = bodyRef.current;
+    if (!el || initialized.current) return undefined;
+    if (typeof IntersectionObserver === 'undefined') {
+      initialized.current = true;
+      return undefined;
+    }
 
     const rowDefs = buildRows();
     setRows(rowDefs);
 
-    const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const delay = reduced ? 0 : rowDefs.length * 70 + 200;
-    const timer = setTimeout(() => setClosingVisible(true), delay);
+    let timer = 0;
+    const start = () => {
+      if (initialized.current) return;
+      initialized.current = true;
+      observer.disconnect();
 
-    fetchGeo().then((geo) => {
-      if (!geo) {
+      const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const delay = reduced ? 0 : rowDefs.length * 70 + 200;
+      timer = setTimeout(() => setClosingVisible(true), delay);
+
+      fetchGeo().then((geo) => {
+        if (!geo) {
+          setGeoValues({
+            ip: 'lookup unavailable', country: 'lookup unavailable',
+            region: 'lookup unavailable', city: 'lookup unavailable',
+            zip: 'lookup unavailable', full: 'lookup unavailable',
+            lat: 'lookup unavailable', lng: 'lookup unavailable',
+            tz: 'lookup unavailable', time: fmtTime(),
+            org: 'lookup unavailable', org2: 'lookup unavailable',
+            asn: 'lookup unavailable',
+          });
+          return;
+        }
+
+        const org = geo.org || '';
+        const asnMatch = org.match(/^AS\d+/);
+        const asn = asnMatch ? asnMatch[0] : '';
+        const orgName = asn ? org.slice(asn.length).trim() : org;
+        const loc = (geo.loc || '').split(',');
+        const countryName = (code) => COUNTRY_NAMES[code] || code || 'unavailable';
+
         setGeoValues({
-          ip: 'lookup unavailable', country: 'lookup unavailable',
-          region: 'lookup unavailable', city: 'lookup unavailable',
-          zip: 'lookup unavailable', full: 'lookup unavailable',
-          lat: 'lookup unavailable', lng: 'lookup unavailable',
-          tz: 'lookup unavailable', time: fmtTime(),
-          org: 'lookup unavailable', org2: 'lookup unavailable',
-          asn: 'lookup unavailable',
+          ip: geo.ip || 'unavailable',
+          country: countryName(geo.country),
+          region: geo.region || 'unavailable',
+          city: geo.city || 'unavailable',
+          zip: geo.postal || 'unavailable',
+          full: geo.city && geo.region ? `${geo.city}, ${geo.region}, ${countryName(geo.country)}` : 'unavailable',
+          lat: loc[0] || 'unavailable',
+          lng: loc[1] || 'unavailable',
+          tz: geo.timezone || 'unavailable',
+          time: geo.timezone ? fmtTime(geo.timezone) : fmtTime(),
+          org: orgName || 'unavailable',
+          org2: orgName || 'unavailable',
+          asn: asn || 'unavailable',
         });
-        return;
-      }
+      }).catch(() => {});
+    };
 
-      const org = geo.org || '';
-      const asnMatch = org.match(/^AS\d+/);
-      const asn = asnMatch ? asnMatch[0] : '';
-      const orgName = asn ? org.slice(asn.length).trim() : org;
-      const loc = (geo.loc || '').split(',');
-      const countryName = (code) => COUNTRY_NAMES[code] || code || 'unavailable';
+    // Fire the lookup as soon as the terminal is near the viewport (rootMargin
+    // pulls the trigger ~40% earlier so it's ready by the time you land on it).
+    const observer = new IntersectionObserver(
+      (entries) => entries.forEach((entry) => { if (entry.isIntersecting) start(); }),
+      { rootMargin: '0px 0px 40% 0px', threshold: 0 }
+    );
+    observer.observe(el);
 
-      setGeoValues({
-        ip: geo.ip || 'unavailable',
-        country: countryName(geo.country),
-        region: geo.region || 'unavailable',
-        city: geo.city || 'unavailable',
-        zip: geo.postal || 'unavailable',
-        full: geo.city && geo.region ? `${geo.city}, ${geo.region}, ${countryName(geo.country)}` : 'unavailable',
-        lat: loc[0] || 'unavailable',
-        lng: loc[1] || 'unavailable',
-        tz: geo.timezone || 'unavailable',
-        time: geo.timezone ? fmtTime(geo.timezone) : fmtTime(),
-        org: orgName || 'unavailable',
-        org2: orgName || 'unavailable',
-        asn: asn || 'unavailable',
-      });
-    }).catch(() => {});
-
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); observer.disconnect(); };
   }, [buildRows]);
 
   useEffect(() => {

@@ -39,6 +39,7 @@ button { color: inherit; }
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
@@ -321,6 +322,53 @@ button { color: inherit; }
 .mp-play:active { transform: scale(.95); }
 .mp-ctl.is-on { color: var(--pink); }
 
+/* Muted badge + tap-to-enable-sound overlay (iOS/mobile autoplay prompt) */
+.mp-muted-badge {
+  position: absolute;
+  top: .95rem;
+  right: 3.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(8,8,13,.6);
+  border: 1px solid rgba(255,255,255,.18);
+  color: rgba(255,255,255,.8);
+  pointer-events: none;
+}
+.mp-muted-badge svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.mp-tap {
+  position: absolute;
+  top: 3.1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem 1rem;
+  border-radius: 999px;
+  background: rgba(255,113,200,.16);
+  border: 1px solid rgba(255,113,200,.5);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 26px rgba(0,0,0,.45), 0 0 22px rgba(255,113,200,.25);
+  animation: tap-pulse 2s ease-in-out infinite;
+  white-space: nowrap;
+}
+.mp-tap svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mp-tap:active { transform: translateX(-50%) scale(.96); }
+@keyframes tap-pulse {
+  0%, 100% { box-shadow: 0 8px 26px rgba(0,0,0,.45), 0 0 14px rgba(255,113,200,.15); }
+  50% { box-shadow: 0 8px 26px rgba(0,0,0,.45), 0 0 26px rgba(255,113,200,.42); }
+}
+
 @keyframes intro-rise {
   from { opacity: 0; transform: translateY(18px); }
   to { opacity: 1; transform: translateY(0); }
@@ -477,6 +525,31 @@ button { color: inherit; }
 .video-feed.has-scrolled .scroll-hint { opacity: 0; }
 
 @keyframes scroll-bounce { 50% { transform: translateY(5px); } }
+
+/* macOS-style toast notification (share confirm, etc.) */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 7rem;
+  transform: translateX(-50%) translateY(12px);
+  z-index: 80;
+  padding: .7rem 1.1rem;
+  border-radius: 12px;
+  background: rgba(26,24,38,.92);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border: 1px solid rgba(255,255,255,.16);
+  box-shadow: 0 14px 40px rgba(0,0,0,.5), 0 0 0 1px rgba(0,0,0,.35);
+  color: #fff;
+  font-size: .8rem;
+  font-weight: 500;
+  opacity: 0;
+  animation: toast-in .25s var(--ease) forwards;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 @keyframes feed-in { from { opacity: 0; } to { opacity: 1; } }
 
 @media (min-width: 700px) {
@@ -568,15 +641,38 @@ button { color: inherit; }
     transform: translateX(-50%);
     z-index: 60;
     display: flex;
-    align-items: flex-end;
-    gap: .55rem;
-    padding: .6rem .8rem;
+    flex-direction: column;
+    align-items: center;
+    gap: .45rem;
+    padding: .6rem .8rem .5rem;
     border-radius: 22px;
     background: rgba(26,24,38,.5);
     -webkit-backdrop-filter: blur(24px) saturate(170%);
     backdrop-filter: blur(24px) saturate(170%);
     border: 1px solid rgba(255,255,255,.16);
     box-shadow: 0 14px 40px rgba(0,0,0,.5), 0 0 0 1px rgba(0,0,0,.35);
+  }
+  .dock-icons { display: flex; align-items: flex-end; gap: .55rem; }
+  .dock-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .28rem;
+    padding-top: .2rem;
+    border-top: 1px solid rgba(255,255,255,.09);
+    width: 100%;
+  }
+  .dock-prog-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.28);
+    transition: background .3s var(--ease), transform .3s var(--ease);
+  }
+  .dock-prog-dot.is-active {
+    background: linear-gradient(180deg, var(--pink), var(--cyan));
+    transform: scale(1.35);
+    box-shadow: 0 0 8px rgba(255,113,200,.6);
   }
   .dock-app {
     position: relative;

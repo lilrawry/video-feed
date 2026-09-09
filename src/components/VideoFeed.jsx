@@ -4,6 +4,7 @@ import PrankTerminal from './PrankTerminal';
 import Intro from './Intro';
 import MacMenuBar from './MacMenuBar';
 import MacDock from './MacDock';
+import Toast from './Toast';
 import { useIsDesktop } from '../utils/useIsDesktop';
 
 const VIDEOS = [
@@ -143,6 +144,45 @@ export default function VideoFeed({ feedRef }) {
     };
   }, [resolveActive]);
 
+  // Flick detector: on mobile a hard vertical swipe that ends fast is nudged to
+  // the next/previous slide so it feels snappier than relying only on native
+  // scroll-snap, which can under-shoot on iOS.
+  useEffect(() => {
+    const feed = feedRef.current;
+    if (!feed) return undefined;
+    let y = 0;
+    let t = 0;
+    const onDown = (e) => {
+      const p = e.touches ? e.touches[0] : e;
+      y = p.clientY;
+      t = performance.now();
+    };
+    const onUp = (e) => {
+      const p = e.changedTouches ? e.changedTouches[0] : e;
+      const dy = p.clientY - y;
+      const dt = performance.now() - t;
+      if (dt <= 0) return;
+      const v = Math.abs(dy) / dt; // px per ms
+      const h = feed.clientHeight || window.innerHeight;
+      const pos = feed.scrollTop;
+      const nearest = Math.round(pos / h);
+      const offset = Math.abs(pos - nearest * h);
+      // Only assist a fast flick if native scroll-snap is about to under-shoot
+      // (i.e. it hasn't already settled on a snap point). This avoids skipping
+      // slides that the browser would have snapped to anyway.
+      if (v > 1.0 && Math.abs(dy) > 90 && offset > h * 0.18) {
+        const dir = dy < 0 ? 1 : -1;
+        scrollToSlide(nearest + dir);
+      }
+    };
+    feed.addEventListener('touchstart', onDown, { passive: true });
+    feed.addEventListener('touchend', onUp, { passive: true });
+    return () => {
+      feed.removeEventListener('touchstart', onDown);
+      feed.removeEventListener('touchend', onUp);
+    };
+  }, [feedRef, scrollToSlide]);
+
   const setSlideRef = useCallback((i) => (el) => {
     slideRefs.current[i] = el;
   }, []);
@@ -234,7 +274,12 @@ export default function VideoFeed({ feedRef }) {
           </nav>
 
           {/* macOS dock */}
-          <MacDock scrollToSlide={scrollToSlide} playMusic={playMusic} />
+          <MacDock
+            scrollToSlide={scrollToSlide}
+            playMusic={playMusic}
+            activeSlide={activeSlide}
+            total={COPY_ITEMS}
+          />
         </>
       )}
     </div>

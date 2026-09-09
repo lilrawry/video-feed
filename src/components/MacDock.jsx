@@ -1,3 +1,5 @@
+import { showToast } from './Toast';
+
 // macOS-style dock: a row of glossy icons that map to feed sections.
 // Clicking an icon scrolls the feed to that slide (or triggers a custom action).
 const APPS = [
@@ -8,29 +10,74 @@ const APPS = [
   { key: 'film3', label: 'Video 3', icon: <DockFilm3 />, slide: 3 },
   { key: 'film4', label: 'Video 4', icon: <DockFilm4 />, slide: 4 },
   { key: 'terminal', label: 'Terminal', icon: <DockTerm />, slide: 5 },
+  { key: 'share', label: 'Share', icon: <DockShare />, plugin: 'share' },
 ];
 
-export default function MacDock({ scrollToSlide, playMusic }) {
+export default function MacDock({ scrollToSlide, playMusic, activeSlide = 0, total = 1 }) {
+  // Copy the current URL and confirm with a toast.
+  const share = () => {
+    const url = window.location.href;
+    const done = () => showToast('Link copied — share it!');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, () => fallbackCopy(url) && done());
+      } else if (fallbackCopy(url)) {
+        done();
+      }
+    } catch {
+      fallbackCopy(url) && done();
+    }
+  };
+
   return (
     <nav className="mac-dock" aria-label="Dock">
-      {APPS.map((app) => (
-        <button
-          type="button"
-          key={app.key}
-          className="dock-app"
-          aria-label={app.label}
-          onClick={() => {
-            if (app.plugin === 'music') playMusic();
-            else scrollToSlide(app.slide);
-          }}
-        >
-          <span className="dock-ic">{app.icon}</span>
-          <span className="dock-tip">{app.label}</span>
-          <span className="dock-dot"></span>
-        </button>
-      ))}
+      <div className="dock-icons">
+        {APPS.map((app) => (
+          <button
+            type="button"
+            key={app.key}
+            className="dock-app"
+            aria-label={app.label}
+            aria-current={!app.plugin && activeSlide === app.slide ? 'true' : undefined}
+            onClick={() => {
+              if (app.plugin === 'music') playMusic();
+              else if (app.plugin === 'share') share();
+              else scrollToSlide(app.slide);
+            }}
+          >
+            <span className="dock-ic" aria-hidden="true">{app.icon}</span>
+            <span className="dock-tip">{app.label}</span>
+            <span className="dock-dot"></span>
+          </button>
+        ))}
+      </div>
+
+      {/* TikTok-style progress dots: current section vs total. */}
+      <div className="dock-progress" role="presentation" aria-hidden="true">
+        {Array.from({ length: total }).map((_, i) => (
+          <span key={i} className={`dock-prog-dot${i === activeSlide ? ' is-active' : ''}`} />
+        ))}
+      </div>
     </nav>
   );
+}
+
+// Clipboard fallback for browsers without the async Clipboard API.
+function fallbackCopy(text) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'absolute';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
 }
 
 function DockFace() {
@@ -69,6 +116,13 @@ function DockTerm() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="2.5" y="4" width="19" height="16" rx="2.5" fill="none" />
       <path d="M6 9l3 3-3 3M11 15h4" fill="none" />
+    </svg>
+  );
+}
+function DockShare() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v12" />
     </svg>
   );
 }

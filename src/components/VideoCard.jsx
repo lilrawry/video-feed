@@ -11,6 +11,25 @@ export default function VideoCard({ src, index, isActive, onBecomeActive, total,
   const { soundUnlocked } = useSound();
   const desktop = useIsDesktop();
 
+  // Lazy-load: videos only start downloading their data once they approach the
+  // viewport. User-visible handoff stays smooth because IO fires ~40% early.
+  useEffect(() => {
+    const player = videoRef.current;
+    if (!player || typeof IntersectionObserver === 'undefined') return undefined;
+    if (index === 0) { player.preload = 'auto'; return undefined; }
+    const obs = new IntersectionObserver(
+      (entries) => entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          player.preload = 'auto';
+          obs.disconnect();
+        }
+      }),
+      { rootMargin: '200px 0px' }
+    );
+    obs.observe(player);
+    return () => obs.disconnect();
+  }, [index]);
+
   const unmuteWhenPlaying = useCallback((player) => {
     let handled = false;
     const unmute = () => {
@@ -88,7 +107,7 @@ export default function VideoCard({ src, index, isActive, onBecomeActive, total,
           muted
           playsInline
           loop
-          preload={index === 0 ? 'auto' : 'metadata'}
+          preload="metadata"
           onClick={() => onBecomeActive(index)}
           onError={handleError}
           onLoadedData={handleLoadedData}
