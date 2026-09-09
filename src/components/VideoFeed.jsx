@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import VideoCard from './VideoCard';
 import PrankTerminal from './PrankTerminal';
 import Intro from './Intro';
+import { useIsDesktop } from '../utils/useIsDesktop';
 
 const VIDEOS = [
   'videos/video-1.mp4',
@@ -20,6 +21,7 @@ export default function VideoFeed({ feedRef }) {
   const [hasScrolled, setHasScrolled] = useState(false);
   const observerRef = useRef(null);
   const slideRefs = useRef([]);
+  const desktop = useIsDesktop();
 
   const prankIndex = VIDEO_START + VIDEOS.length;
 
@@ -131,6 +133,21 @@ export default function VideoFeed({ feedRef }) {
     slideRefs.current[i] = el;
   }, []);
 
+  const scrollToSlide = useCallback(
+    (slideIndex) => {
+      const feed = feedRef.current;
+      if (!feed) return;
+      const h = feed.clientHeight || window.innerHeight;
+      const clamped = Math.min(feed.children.length - 1, Math.max(0, slideIndex));
+      try {
+        feed.scrollTo({ top: clamped * h, behavior: 'smooth' });
+      } catch {
+        feed.scrollTop = clamped * h;
+      }
+    },
+    [feedRef]
+  );
+
   const slides = [];
 
   // Intro slide (half message, half preview of the first video)
@@ -144,13 +161,18 @@ export default function VideoFeed({ feedRef }) {
 
   // Video slides
   VIDEOS.forEach((src, i) => {
+    const videoSlide = VIDEO_START + i;
     slides.push(
-      <div className="feed-slide" key={src} ref={setSlideRef(VIDEO_START + i)}>
+      <div className="feed-slide" key={src} ref={setSlideRef(videoSlide)}>
         <VideoCard
           src={src}
           index={i}
+          total={VIDEOS.length}
           isActive={slideToVideo(activeSlide) === i}
-          onBecomeActive={() => setActiveSlide(VIDEO_START + i)}
+          onBecomeActive={() => setActiveSlide(videoSlide)}
+          onNext={() => {
+            if (i < VIDEOS.length - 1) scrollToSlide(videoSlide + 1);
+          }}
         />
       </div>
     );
@@ -170,6 +192,38 @@ export default function VideoFeed({ feedRef }) {
       aria-label="Video feed"
     >
       {slides}
+
+      {desktop && (
+        <>
+          {/* Branding + progress rail */}
+          <header className="pb-top">
+            <span className="pb-logo">
+              <span className="pb-logo-dot"></span>
+              about<span>me</span>
+            </span>
+            <span className="pb-tagline">vertical vibes · tiktok-style feed</span>
+          </header>
+
+          <nav className="pb-progress" aria-label="Feed progress">
+            {Array.from({ length: COPY_ITEMS }).map((_, i) => {
+              const active = activeSlide === i;
+              const done = activeSlide > i;
+              return (
+                <button
+                  type="button"
+                  key={i}
+                  className={`pb-dot${active ? ' is-active' : ''}${done ? ' is-done' : ''}`}
+                  aria-label={`Go to slide ${i + 1}`}
+                  onClick={() => scrollToSlide(i)}
+                />
+              );
+            })}
+          </nav>
+        </>
+      )}
     </div>
   );
 }
+
+// Number of progress dots: intro + videos + prank.
+const COPY_ITEMS = INTRO_SLIDES + VIDEOS.length + 1;

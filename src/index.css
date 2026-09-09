@@ -368,6 +368,204 @@ button { color: inherit; }
 @media (min-width: 1200px) {
   .feed-player { max-width: 680px; }
 }
+
+/* ---------------------------------------------------------------------------
+   DESKTOP (PC) polish — only applied to fine-pointer devices so phones keep
+   the clean full-bleed app feel. Adds a sibling bar, per-video action rail,
+   captions, and a next-video pill for a TikTok-web-like experience.
+--------------------------------------------------------------------------- */
+.player-wrap { position: relative; z-index: 1; display: inline-block; border-radius: inherit; }
+
+@media (pointer: fine) and (min-width: 900px) {
+  .feed-video { padding: 3.5rem 4.5rem 4rem; }
+  .feed-player {
+    max-height: min(84dvh, 860px);
+    box-shadow: 0 24px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+    transition: transform .5s var(--ease), box-shadow .5s var(--ease);
+  }
+  /* Subtle rise on the video that is on screen */
+  .feed-slide .feed-player { transform: scale(.985); }
+  .video-feed .feed-slide:has(.feed-video[data-active='true']) .feed-player { transform: scale(1); }
+
+  /* Top branding bar (fixed above the scroll) */
+  .pb-top {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.1rem 1.6rem;
+    background: linear-gradient(180deg, rgba(8,8,13,.75), transparent);
+    pointer-events: none;
+  }
+  .pb-logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 1.05rem;
+    letter-spacing: .06em;
+    text-transform: lowercase;
+    color: var(--ink);
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+  }
+  .pb-logo span { color: var(--pink); }
+  .pb-logo-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); animation: blink 1.6s ease-in-out infinite; }
+  .pb-tagline { font-family: 'DM Mono', monospace; font-size: .6rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); opacity: .8; }
+
+  /* Right-edge progress rail */
+  .pb-progress {
+    position: fixed;
+    right: 1.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: .55rem;
+  }
+  .pb-dot {
+    width: 9px;
+    height: 26px;
+    border: none;
+    border-radius: 99px;
+    background: rgba(255,255,255,.18);
+    cursor: pointer;
+    transition: background .3s var(--ease), height .3s var(--ease);
+    padding: 0;
+  }
+  .pb-dot:hover { background: rgba(255,255,255,.4); }
+  .pb-dot.is-active { background: linear-gradient(180deg, var(--pink), var(--cyan)); height: 34px; box-shadow: 0 0 12px rgba(255,113,200,.5); }
+  .pb-dot.is-done { background: rgba(255,255,255,.35); }
+
+  /* Per-video top chip */
+  .vd-top {
+    position: absolute;
+    top: .9rem;
+    left: 1rem;
+    right: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 3;
+  }
+  .vd-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .32rem .7rem;
+    border-radius: 999px;
+    background: rgba(8,8,13,.55);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.1);
+    font-family: 'DM Mono', monospace;
+    font-size: .62rem;
+    letter-spacing: .14em;
+    color: var(--ink);
+  }
+  .vd-chip.vd-hd { color: var(--pink); }
+  .vd-live-dot { width: .45rem; height: .45rem; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: blink 1.4s ease-in-out infinite; }
+
+  /* Right action rail (like TikTok web) */
+  .vd-rail {
+    position: absolute;
+    right: -4.2rem;
+    bottom: 4.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.05rem;
+    z-index: 4;
+  }
+  .vd-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .3rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--ink);
+    font-family: 'DM Mono', monospace;
+    font-size: .6rem;
+    letter-spacing: .06em;
+    transition: transform .25s var(--ease), color .25s var(--ease);
+    padding: 0;
+  }
+  .vd-btn svg {
+    width: 34px;
+    height: 34px;
+    padding: 8px;
+    border-radius: 50%;
+    background: rgba(8,8,13,.5);
+    border: 1px solid rgba(255,255,255,.1);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform .25s var(--ease), background .25s var(--ease);
+  }
+  .vd-btn:hover { color: var(--pink); transform: translateY(-2px); }
+  .vd-btn:hover svg { background: rgba(8,8,13,.75); }
+  .vd-btn:active svg { transform: scale(.9); }
+  .vd-btn.is-liked { color: var(--pink); }
+  .vd-btn.is-liked svg { fill: var(--pink); stroke: var(--pink); animation: like-pop .45s var(--ease); }
+
+  /* Caption + next pill at the bottom */
+  .vd-footer {
+    position: absolute;
+    left: 1rem;
+    right: 6rem;
+    bottom: 1rem;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .vd-caption {
+    margin: 0;
+    font-size: .95rem;
+    color: rgba(255,255,255,.88);
+    text-shadow: 0 2px 12px rgba(0,0,0,.6);
+    max-width: 60%;
+  }
+  .vd-caption strong { color: var(--cyan); font-weight: 600; }
+  .vd-next {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .55rem 1rem;
+    border: 1px solid rgba(118,229,255,.35);
+    border-radius: 999px;
+    background: rgba(9,7,13,.7);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: var(--cyan);
+    font-family: 'DM Mono', monospace;
+    font-size: .62rem;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform .25s var(--ease), background .25s var(--ease);
+  }
+  .vd-next:hover { background: rgba(9,7,13,.95); transform: translateY(-2px); }
+  .vd-next b { color: var(--pink); font-size: 1.1rem; }
+
+  @keyframes like-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.22); }
+    100% { transform: scale(1); }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

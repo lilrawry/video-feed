@@ -1,12 +1,15 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { safePlay } from '../utils/safePlay';
 import { useSound } from '../contexts/SoundContext';
+import { useIsDesktop } from '../utils/useIsDesktop';
 
-export default function VideoCard({ src, index, isActive, onBecomeActive }) {
+export default function VideoCard({ src, index, isActive, onBecomeActive, total, onNext }) {
   const videoRef = useRef(null);
   const [missing, setMissing] = useState(false);
+  const [liked, setLiked] = useState(false);
   const didStart = useRef(false);
   const { soundUnlocked } = useSound();
+  const desktop = useIsDesktop();
 
   const unmuteWhenPlaying = useCallback((player) => {
     let handled = false;
@@ -70,24 +73,81 @@ export default function VideoCard({ src, index, isActive, onBecomeActive }) {
   const handleLoadedData = useCallback(() => setMissing(false), []);
   const handleCanPlay = useCallback(() => setMissing(false), []);
 
+  const fileLabel = src.split('/').pop();
+
   return (
-    <article className="feed-video">
-      <video
-        ref={videoRef}
-        className="feed-player"
-        src={src}
-        muted
-        playsInline
-        loop
-        preload={index === 0 ? 'auto' : 'metadata'}
-        onClick={() => onBecomeActive(index)}
-        onError={handleError}
-        onLoadedData={handleLoadedData}
-        onCanPlay={handleCanPlay}
-      />
-      <p className={`video-missing${missing ? ' is-visible' : ''}`}>
-        Add <strong>{src}</strong> to play this video.
-      </p>
+    <article className="feed-video" data-active={isActive || undefined}>
+      <div className="player-wrap">
+        <video
+          ref={videoRef}
+          className="feed-player"
+          src={src}
+          muted
+          playsInline
+          loop
+          preload={index === 0 ? 'auto' : 'metadata'}
+          onClick={() => onBecomeActive(index)}
+          onError={handleError}
+          onLoadedData={handleLoadedData}
+          onCanPlay={handleCanPlay}
+        />
+
+        <p className={`video-missing${missing ? ' is-visible' : ''}`}>
+          Add <strong>{fileLabel}</strong> to play this video.
+        </p>
+
+        {desktop && (
+          <>
+            {/* Top counter chip */}
+            <div className="vd-top">
+              <span className="vd-chip">
+                <span className="vd-live-dot"></span>
+                {String(index + 1).padStart(2, '0')} / {String(total).padStart(2, '0')}
+              </span>
+              <span className="vd-chip vd-hd">HD</span>
+            </div>
+
+            {/* Right action rail */}
+            <div className="vd-rail">
+              <button
+                type="button"
+                className={`vd-btn${liked ? ' is-liked' : ''}`}
+                aria-label="Like"
+                onClick={(e) => { e.stopPropagation(); setLiked((v) => !v); }}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 21s-7.5-4.7-10-9.3C.4 8.4 2.3 4.5 6 4.5c2 0 3.3 1 4 2.1.7-1.1 2-2.1 4-2.1 3.7 0 5.6 3.9 4 7.2C19.5 16.3 12 21 12 21z" />
+                </svg>
+                <span>{liked ? '1.2k' : '1.2k'}</span>
+              </button>
+              <button type="button" className="vd-btn" aria-label="Share" onClick={(e) => e.stopPropagation()}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M16 6l-4-4-4 4M12 2v12" />
+                </svg>
+                <span>share</span>
+              </button>
+              <button type="button" className="vd-btn" aria-label="Loop" onClick={(e) => e.stopPropagation()}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
+                </svg>
+                <span>loop</span>
+              </button>
+            </div>
+
+            {/* Caption */}
+            <div className="vd-footer">
+              <p className="vd-caption">
+                <strong>@{fileLabel.replace('.mp4', '')}</strong> — my favorite video edit
+              </p>
+              {onNext && (
+                <button type="button" className="vd-next" onClick={() => onNext()}>
+                  next video <b>&#8595;</b>
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </article>
   );
 }
