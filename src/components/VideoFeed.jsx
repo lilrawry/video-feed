@@ -162,11 +162,11 @@ export default function VideoFeed({ feedRef }) {
 
   const slides = [];
 
-  // Intro slide (half message, half preview of a video that plays the song)
+  // Intro slide (greeting + music player)
   for (let i = 0; i < INTRO_SLIDES; i++) {
     slides.push(
       <div className="feed-slide" key={`intro-${i}`} ref={setSlideRef(i)}>
-        <Intro nextVideo="videos/video-4.mp4" />
+        <Intro />
       </div>
     );
   }
