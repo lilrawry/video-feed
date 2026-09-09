@@ -2,16 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- Content Security Policy: the page trusts no third parties for code or media.
-       Allowed remote resources: Google Fonts, plus one ipinfo.io JSON lookup that
-       powers the "device reveal" section (it returns the visitor's own IP/geo).
-       frame-src 'none' blocks ANY injected embed (including TikTok) — there is
-       no third-party embed on this page, so there is no embed to unmute; the
-       in-feed HTML5 player below follows the same muted-autoplay rules. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; media-src 'self'; img-src 'self' data:; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://ipinfo.io; object-src 'none'; base-uri 'self'; form-action 'none'; frame-src 'none'; upgrade-insecure-requests">
-  <meta name="referrer" content="no-referrer">
-  <!-- iOS fix: viewport-fit=cover + the inner UI uses env(safe-area-inset-*) so
-       the iPhone notch/home bar never overlaps the player or the Unmute button. -->
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#08080d">
   <meta name="description" content="A vertical feed of short video loops.">
@@ -23,65 +13,13 @@
   <meta name="twitter:card" content="summary">
   <link rel="icon" type="image/png" sizes="96x96" href="icon.png">
   <link rel="apple-touch-icon" href="icon.png">
-  <title>About me — video feed</title>
-  <!-- Deployment note: when hosting, serve over HTTPS and apply the headers in
-       `_headers` (Vercel/Netlify/Cloudflare Pages compatible) so `frame-ancestors
-       'none'` and friends are enforced — a meta tag cannot express frame-ancestors,
-       so the file bundles that protection for the hosted version. For local preview,
-       run `npx serve` (or `python -m http.server`) instead of double-clicking the file.
-
-       Cache-busting: `script.js` and `style.css` are the sources and are referenced
-       below with their plain names. Run `node build.mjs` (or let Vercel via
-       vercel.json, which already runs `npm run build`) AFTER editing them — it
-       writes content-hashed copies (script.<hash>.js / style.<hash>.css), rewrites
-       the two references below to the hashed names, and regenerates `_headers`. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" crossorigin>
-  <link rel="stylesheet" href="style.6000284f.css">
+  <title>About me — video feed</title>
 </head>
 <body>
-  <main class="site-shell">
-    <section class="content" id="content" aria-label="Video feed">
-      <!-- iOS fix: `autoplay` only ever runs MUTED here. iOS Safari blocks sound
-           autoplay and unmute is granted exclusively by the Unmute button (or any
-           click/keyboard gesture) in script.js — never by JS at page load. -->
-      <div class="video-feed" id="videoFeed">
-        <!-- Add your downloaded/owned MP4 files to the videos folder using these names. -->
-        <article class="feed-video">
-          <video class="feed-player" src="videos/video-1.mp4" autoplay muted playsinline loop preload="auto"></video>
-          <p class="video-missing">Add <strong>videos/video-1.mp4</strong> to play this video.</p>
-          <div class="scroll-hint" aria-hidden="true"><span>scroll up</span><b>&#8595;</b></div>
-        </article>
-        <article class="feed-video">
-          <video class="feed-player" src="videos/video-2.mp4" muted playsinline loop preload="metadata"></video>
-          <p class="video-missing">Add <strong>videos/video-2.mp4</strong> to play this video.</p>
-        </article>
-        <article class="feed-video">
-          <video class="feed-player" src="videos/video-3.mp4" muted playsinline loop preload="metadata"></video>
-          <p class="video-missing">Add <strong>videos/video-3.mp4</strong> to play this video.</p>
-        </article>
-        <article class="feed-video prank-card" id="prankCard" aria-label="Device scan results">
-          <div class="terminal" role="img" aria-label="Scan result for this device">
-            <div class="terminal-bar">
-              <span class="dot dot-pink" aria-hidden="true"></span>
-              <span class="dot dot-cyan" aria-hidden="true"></span>
-              <span class="dot dot-red" aria-hidden="true"></span>
-              <span class="terminal-title">unsecured_terminal.exe</span>
-            </div>
-            <div class="terminal-body" id="terminalBody"></div>
-          </div>
-        </article>
-      </div>
-      <!-- iOS fix: an explicit, real <button> is the ONLY thing that unmutes (plus
-           generic tap/keyboard gestures handled in script.js). It sits outside the
-           feed articles so its tap never also lands on a video underneath. Hidden
-           while the prank slide owns the screen or after sound is unlocked. -->
-      <button type="button" class="unmute-btn" id="unmuteBtn" aria-pressed="false" aria-label="Unmute audio">audio muted<span class="unmute-btn-dot" aria-hidden="true"></span>tap to unmute</button>
-    </section>
-  </main>
-
-  <!-- script.js is the source; build.mjs re-points this to the hashed copy on deploy. -->
-  <script src="script.0b91a24a.js"></script>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
