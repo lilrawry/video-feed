@@ -38,12 +38,19 @@ button { color: inherit; }
   height: 100dvh;
   overflow-y: auto;
   overscroll-behavior-y: contain;
+  overscroll-behavior-inline: none;
   scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Smooth programmatic scrolling only where there is no touch momentum —
+   on touch devices native scroll + scroll-snap already animate the fling. */
+@media (pointer: fine) {
+  .video-feed { scroll-behavior: smooth; }
 }
 .feed-slide {
   scroll-snap-align: start;
@@ -51,6 +58,10 @@ button { color: inherit; }
   min-height: 100vh;
   min-height: 100svh;
   min-height: 100dvh;
+  /* Skip painting offscreen slides entirely — the big mobile smoothness win:
+     a 6-slide feed renders only what the eye can see. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 100dvh;
 }
 
 .feed-video {
@@ -80,6 +91,8 @@ button { color: inherit; }
   display: block;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
   width: min(100%, 605px);
   height: min(82svh, 760px);
   height: min(82dvh, 760px);
@@ -445,21 +458,45 @@ button { color: inherit; }
 .video-missing {
   display: none;
   position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 2;
-  max-width: 85%;
+  max-width: 80%;
+  min-width: 14rem;
   margin: 0;
-  padding: .8rem 1rem;
+  padding: .9rem 1.1rem 1rem;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(8,8,13,.82);
+  border-radius: 14px;
+  background: rgba(8,8,13,.85);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   color: var(--muted);
   font-family: 'DM Mono', monospace;
-  font-size: .65rem;
+  font-size: .66rem;
+  line-height: 1.55;
   text-align: center;
-  pointer-events: none;
 }
+.video-missing p { margin: 0 0 .6rem; }
 .video-missing.is-visible { display: block; }
-.video-missing strong { color: var(--pink); font-weight: 500; }
+.vm-retry {
+  display: inline-block;
+  padding: .5rem .95rem;
+  border: 1px solid rgba(118, 229, 255, .35);
+  border-radius: 999px;
+  background: rgba(9, 7, 13, .6);
+  color: var(--cyan);
+  font-family: 'DM Mono', monospace;
+  font-size: .6rem;
+  letter-spacing: .06em;
+  text-transform: lowercase;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.vm-retry:active { transform: scale(.96); }
 
 .unmute-btn {
   position: fixed;

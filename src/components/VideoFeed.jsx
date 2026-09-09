@@ -155,12 +155,14 @@ export default function VideoFeed({ feedRef }) {
       const h = feed.clientHeight || window.innerHeight;
       const clamped = Math.min(feed.children.length - 1, Math.max(0, slideIndex));
       try {
-        feed.scrollTo({ top: clamped * h, behavior: 'smooth' });
+        // Desktop: ease into the slide. Touch: snap instantly so the feed never
+        // fights the finger's momentum (native scroll-snap lands it cleanly).
+        feed.scrollTo({ top: clamped * h, behavior: desktop ? 'smooth' : 'auto' });
       } catch {
         feed.scrollTop = clamped * h;
       }
     },
-    [feedRef]
+    [feedRef, desktop]
   );
 
   const playMusic = useCallback(() => {

@@ -8,6 +8,7 @@ export default function VideoCard({ src, index, isActive, onBecomeActive, total,
   const [missing, setMissing] = useState(false);
   const [liked, setLiked] = useState(false);
   const didStart = useRef(false);
+  const loadAttemptsRef = useRef(0);
   const { soundUnlocked } = useSound();
   const desktop = useIsDesktop();
 
@@ -90,10 +91,38 @@ export default function VideoCard({ src, index, isActive, onBecomeActive, total,
     }
   }, [soundUnlocked, isActive, startPlayer, unmuteWhenPlaying]);
 
-  // Missing-video fallback state.
-  const handleError = useCallback(() => setMissing(true), []);
-  const handleLoadedData = useCallback(() => setMissing(false), []);
-  const handleCanPlay = useCallback(() => setMissing(false), []);
+  // Robust load: a single onError on a mobile network (or an iOS preload quirk)
+  // is often transient. Retry a couple times with backoff before showing the
+  // tap-to-retry fallback, and only ever show it for the slide the user is on.
+  const handleError = useCallback(() => {
+    const attempts = (loadAttemptsRef.current += 1);
+    if (attempts < 3) {
+      window.setTimeout(() => {
+        const player = videoRef.current;
+        if (player) { try { player.load(); } catch {} }
+      }, attempts * 1200);
+      return;
+    }
+    setMissing(true);
+  }, []);
+
+  const handleLoadedData = useCallback(() => {
+    loadAttemptsRef.current = 0;
+    setMissing(false);
+  }, []);
+  const handleCanPlay = useCallback(() => {
+    loadAttemptsRef.current = 0;
+    setMissing(false);
+  }, []);
+
+  const retryVideo = useCallback(() => {
+    loadAttemptsRef.current = 0;
+    setMissing(false);
+    const player = videoRef.current;
+    if (!player) return;
+    try { player.load(); } catch {}
+    if (isActive) startPlayer();
+  }, [isActive, startPlayer]);
 
   const fileLabel = src.split('/').pop();
 
@@ -108,15 +137,25 @@ export default function VideoCard({ src, index, isActive, onBecomeActive, total,
           playsInline
           loop
           preload="metadata"
+          disablePictureInPicture
+          controls={false}
+          controlsList="nodownload noremoteplayback noplaybackrate nodownload"
+          draggable={false}
           onClick={() => onBecomeActive(index)}
+          onContextMenu={(e) => e.preventDefault()}
           onError={handleError}
           onLoadedData={handleLoadedData}
           onCanPlay={handleCanPlay}
         />
 
-        <p className={`video-missing${missing ? ' is-visible' : ''}`}>
-          Add <strong>{fileLabel}</strong> to play this video.
-        </p>
+        {isActive && missing && (
+          <div className="video-missing is-visible" role="alert">
+            <p>This video couldn&apos;t load on your connection.</p>
+            <button type="button" className="vm-retry" onClick={retryVideo}>
+              tap to retry
+            </button>
+          </div>
+        )}
 
         {desktop && (
           <>
