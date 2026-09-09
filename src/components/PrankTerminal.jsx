@@ -132,10 +132,10 @@ export default function PrankTerminal() {
     <article className="feed-video prank-card" aria-label="Device scan results">
       <div className="terminal" role="img" aria-label="Scan result for this device">
         <div className="terminal-bar">
-          <span className="dot dot-pink" aria-hidden="true"></span>
-          <span className="dot dot-cyan" aria-hidden="true"></span>
           <span className="dot dot-red" aria-hidden="true"></span>
-          <span className="terminal-title">unsecured_terminal.exe</span>
+          <span className="dot dot-yellow" aria-hidden="true"></span>
+          <span className="dot dot-green" aria-hidden="true"></span>
+          <span className="terminal-title">tiger — terminal (zsh)</span>
         </div>
         <div className="terminal-body" ref={bodyRef}>
           <p className="t-boot">&gt; establishing remote uplink&hellip;</p>

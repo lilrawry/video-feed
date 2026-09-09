@@ -51,6 +51,9 @@ export default function VideoCard({ src, index, isActive, onBecomeActive, total,
     if (isActive) {
       startPlayer();
       didStart.current = true;
+      // Tell the landing music player to hand off / stop so its audio never
+      // overlaps the video.
+      window.dispatchEvent(new Event('aboutme:video-playing'));
     } else if (didStart.current) {
       // Only pause videos we previously started, keeping memory light.
       if (!player.paused) player.pause();

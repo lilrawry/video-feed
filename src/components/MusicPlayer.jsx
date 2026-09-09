@@ -26,6 +26,7 @@ export default function MusicPlayer() {
   const canvasRef = useRef(null);
   const reducedRef = useRef(false);
   const userStartedRef = useRef(false);
+  const seedRef = useRef(null);
 
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(START_AT);
@@ -68,24 +69,43 @@ export default function MusicPlayer() {
     ctx2d.clearRect(0, 0, width, height);
 
     const barWidth = (width - gap * (barCount - 1)) / barCount;
-    const data = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
-    if (analyser && data) analyser.getByteFrequencyData(data);
+
+    // Stable decorative preview used whenever no live analyser data is
+    // available (before the first play and while paused).
+    if (!seedRef.current) {
+      seedRef.current = Array.from({ length: barCount }, (_, i) => {
+        const base = 0.28 + 0.52 * Math.abs(Math.sin(i * 1.7 + 2.3));
+        const ripple = 0.3 + 0.7 * Math.abs(Math.sin(i * 3.1));
+        return Math.min(0.95, base * ripple * 1.15);
+      });
+    }
+
+    let data = null;
+    if (analyser) {
+      data = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(data);
+    }
 
     const progress =
       audioNode && audioNode.duration ? audioNode.currentTime / audioNode.duration : 0;
 
     for (let i = 0; i < barCount; i++) {
-      let val = 0.35;
-      if (data) {
+      let val;
+      if (data && playing) {
         const idx = Math.floor((i / barCount) * data.length * 0.6);
-        val = Math.max(0.08, data[idx] / 255);
-        if (!playing) val = Math.min(val, 0.28);
+        val = Math.max(0.12, data[idx] / 255);
+      } else if (data) {
+        // Paused: show a softened live snapshot rather than the flat seed.
+        const idx = Math.floor((i / barCount) * data.length * 0.6);
+        val = Math.max(0.1, Math.min(0.3, data[idx] / 255));
+      } else {
+        val = seedRef.current[i];
       }
       const barH = val * height * 0.9;
       const x = i * (barWidth + gap);
       const y = (height - barH) / 2;
       const isDone = i / barCount <= progress;
-      ctx2d.fillStyle = isDone ? '#ff71c8' : 'rgba(150,147,167,.35)';
+      ctx2d.fillStyle = isDone ? '#ff71c8' : 'rgba(150,147,167,.4)';
       const rx = Math.min(barWidth / 2, 3);
       roundRect(ctx2d, x, y, barWidth, barH, rx);
       ctx2d.fill();
@@ -99,6 +119,27 @@ export default function MusicPlayer() {
     audio.addEventListener('timeupdate', () => setTime(audio.currentTime));
     audio.addEventListener('play', () => { userStartedRef.current = true; setPlaying(true); });
     audio.addEventListener('pause', () => setPlaying(false));
+
+    // Hand off: pause the landing track the moment a feed video starts so the
+    // two sounds never overlap. A re-tap on the landing player starts it again.
+    const handoff = () => {
+      if (!audio.paused) {
+        audio.pause();
+        setPlaying(false);
+      }
+      userStartedRef.current = false;
+    };
+    window.addEventListener('aboutme:video-playing', handoff);
+
+    // Dock action: start (or restart) the landing track from 1:42 on demand.
+    const playCmd = () => {
+      ensureAnalyser(audio);
+      if (audio.currentTime < START_AT - 100 || audio.readyState === 0) {
+        try { audio.currentTime = START_AT; } catch {}
+      }
+      audio.play().catch(() => {});
+    };
+    window.addEventListener('aboutme:play-music', playCmd);
 
     const reduced =
       typeof window.matchMedia === 'function' &&
@@ -124,6 +165,8 @@ export default function MusicPlayer() {
     }
 
     return () => {
+      window.removeEventListener('aboutme:video-playing', handoff);
+      window.removeEventListener('aboutme:play-music', playCmd);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [drawWaveform, ensureAnalyser]);
@@ -183,11 +226,15 @@ export default function MusicPlayer() {
 
   return (
     <div className="music-player" ref={rootRef}>
+      <div className="mp-titlebar">
+        <span className="tl tl-red"></span>
+        <span className="tl tl-yellow"></span>
+        <span className="tl tl-green"></span>
+        <span className="mp-titlebar-name">Music</span>
+      </div>
+
       <div className="mp-art-wrap">
         <img className="mp-art" src={ART} alt={`${TRACK} by ${ARTIST}`} draggable={false} />
-        <span className="mp-art-badge">
-          <span className="mp-badge-dot"></span> now playing
-        </span>
       </div>
 
       <div className="mp-meta">

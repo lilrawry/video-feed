@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import VideoCard from './VideoCard';
 import PrankTerminal from './PrankTerminal';
 import Intro from './Intro';
+import MacMenuBar from './MacMenuBar';
+import MacDock from './MacDock';
 import { useIsDesktop } from '../utils/useIsDesktop';
 
 const VIDEOS = [
@@ -160,6 +162,10 @@ export default function VideoFeed({ feedRef }) {
     [feedRef]
   );
 
+  const playMusic = useCallback(() => {
+    window.dispatchEvent(new Event('aboutme:play-music'));
+  }, []);
+
   const slides = [];
 
   // Intro slide (greeting + music player)
@@ -207,15 +213,10 @@ export default function VideoFeed({ feedRef }) {
 
       {desktop && (
         <>
-          {/* Branding + progress rail */}
-          <header className="pb-top">
-            <span className="pb-logo">
-              <span className="pb-logo-dot"></span>
-              about<span>me</span>
-            </span>
-            <span className="pb-tagline">vertical vibes · tiktok-style feed</span>
-          </header>
+          {/* macOS menu bar */}
+          <MacMenuBar onHome={() => scrollToSlide(0)} />
 
+          {/* Right-edge progress rail */}
           <nav className="pb-progress" aria-label="Feed progress">
             {Array.from({ length: COPY_ITEMS }).map((_, i) => {
               const active = activeSlide === i;
@@ -231,6 +232,9 @@ export default function VideoFeed({ feedRef }) {
               );
             })}
           </nav>
+
+          {/* macOS dock */}
+          <MacDock scrollToSlide={scrollToSlide} playMusic={playMusic} />
         </>
       )}
     </div>
