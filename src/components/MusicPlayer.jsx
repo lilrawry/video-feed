@@ -63,7 +63,9 @@ export default function MusicPlayer() {
 
   // Start the landing track from 1:42. mutedFirst => play silently (always
   // allowed by browsers, even on iOS) so we can show the tap-to-enable-sound
-  // prompt. Returns the play() promise so callers can handle rejection.
+  // prompt. The returned promise always has a .catch attached so a rejected
+  // play() (autoplay blocked before a user gesture) can never surface as an
+  // unhandled promise rejection and spam the console.
   const startFromIntro = useCallback(
     (audio, mutedFirst = false) => {
       if (!audio) return null;
@@ -72,11 +74,19 @@ export default function MusicPlayer() {
       if (audio.currentTime < START_AT - 100 || audio.readyState === 0) {
         try { audio.currentTime = START_AT; } catch {}
       }
+      let p = null;
       try {
-        return audio.play();
+        p = audio.play();
       } catch {
-        return null;
+        p = null;
       }
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          // Autoplay blocked (no user gesture yet) — expected; the gesture
+          // layer or tap overlay retries inside a trusted interaction.
+        });
+      }
+      return p;
     },
     [ensureAnalyser]
   );
@@ -211,7 +221,7 @@ export default function MusicPlayer() {
     // touch / keydown / scroll is a trusted user gesture, so retrying play()
     // inside it is always permitted with sound. Only starts while the landing
     // player is still on screen (so it never fights a playing video).
-    const gesture = () => {
+    const gesture = (e) => {
       // NOTE: we intentionally do NOT call preventDefault here. `play()` does
       // not need it, and preventDefault on touchstart/pointerdown would block
       // the very first scroll on mobile, breaking the feed.
@@ -219,7 +229,12 @@ export default function MusicPlayer() {
       if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
       if (!audio.paused && !audio.muted) return; // already rolling with sound
       if (autoPausedRef.current || !visibleRef.current) return; // hand off decided
-      startFromIntro(audio, false); // inside a gesture => sound allowed
+      // A scroll is NOT a trusted activation for audio on iOS/Android — playing
+      // unmuted there rejects. Start muted on scroll so the waveform runs; the
+      // tap overlay then enables sound. Pointer/touch/click/keydown are trusted,
+      // so those start with sound directly.
+      const mutedOnScroll = e.type === 'scroll';
+      startFromIntro(audio, mutedOnScroll);
       setNeedTap(false);
     };
     const opts = { capture: true, passive: true, once: true };
