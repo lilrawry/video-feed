@@ -144,9 +144,33 @@ export default function VideoFeed({ feedRef }) {
     };
   }, [resolveActive]);
 
+  const setSlideRef = useCallback((i) => (el) => {
+    slideRefs.current[i] = el;
+  }, []);
+
+  const scrollToSlide = useCallback(
+    (slideIndex) => {
+      const feed = feedRef.current;
+      if (!feed) return;
+      const h = feed.clientHeight || window.innerHeight;
+      const clamped = Math.min(feed.children.length - 1, Math.max(0, slideIndex));
+      try {
+        feed.scrollTo({ top: clamped * h, behavior: 'smooth' });
+      } catch {
+        feed.scrollTop = clamped * h;
+      }
+    },
+    [feedRef]
+  );
+
+  const playMusic = useCallback(() => {
+    window.dispatchEvent(new Event('aboutme:play-music'));
+  }, []);
+
   // Flick detector: on mobile a hard vertical swipe that ends fast is nudged to
   // the next/previous slide so it feels snappier than relying only on native
-  // scroll-snap, which can under-shoot on iOS.
+  // scroll-snap, which can under-shoot on iOS. Placed AFTER scrollToSlide so the
+  // dependency array below never hits a temporal-dead-zone ReferenceError.
   useEffect(() => {
     const feed = feedRef.current;
     if (!feed) return undefined;
@@ -182,29 +206,6 @@ export default function VideoFeed({ feedRef }) {
       feed.removeEventListener('touchend', onUp);
     };
   }, [feedRef, scrollToSlide]);
-
-  const setSlideRef = useCallback((i) => (el) => {
-    slideRefs.current[i] = el;
-  }, []);
-
-  const scrollToSlide = useCallback(
-    (slideIndex) => {
-      const feed = feedRef.current;
-      if (!feed) return;
-      const h = feed.clientHeight || window.innerHeight;
-      const clamped = Math.min(feed.children.length - 1, Math.max(0, slideIndex));
-      try {
-        feed.scrollTo({ top: clamped * h, behavior: 'smooth' });
-      } catch {
-        feed.scrollTop = clamped * h;
-      }
-    },
-    [feedRef]
-  );
-
-  const playMusic = useCallback(() => {
-    window.dispatchEvent(new Event('aboutme:play-music'));
-  }, []);
 
   const slides = [];
 
