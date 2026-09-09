@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { isDesktop } from '../utils/useIsDesktop';
 
 // Landing music player — Apple Music–style dynamic waveform player.
 // Plays the track from 1:42 and visualizes live audio through the Web Audio API.
@@ -26,6 +25,9 @@ export default function MusicPlayer() {
   const canvasRef = useRef(null);
   const reducedRef = useRef(false);
   const userStartedRef = useRef(false);
+  const startedRef = useRef(false);
+  const autoPausedRef = useRef(false);
+  const visibleRef = useRef(true);
   const seedRef = useRef(null);
 
   const [playing, setPlaying] = useState(false);
@@ -51,6 +53,21 @@ export default function MusicPlayer() {
       // Web Audio blocked — waveform renders as static decorative bars.
     }
   }, []);
+
+  // Start the landing track from 1:42. Returns whether play() was initiated.
+  const startFromIntro = useCallback(
+    (audio) => {
+      if (!audio) return false;
+      ensureAnalyser(audio);
+      if (audio.currentTime < START_AT - 100 || audio.readyState === 0) {
+        try { audio.currentTime = START_AT; } catch {}
+      }
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+      return true;
+    },
+    [ensureAnalyser]
+  );
 
   const drawWaveform = useCallback(() => {
     const canvas = canvasRef.current;
@@ -117,12 +134,13 @@ export default function MusicPlayer() {
     if (!audio) return;
 
     audio.addEventListener('timeupdate', () => setTime(audio.currentTime));
-    audio.addEventListener('play', () => { userStartedRef.current = true; setPlaying(true); });
+    audio.addEventListener('play', () => { userStartedRef.current = true; startedRef.current = true; setPlaying(true); });
     audio.addEventListener('pause', () => setPlaying(false));
 
     // Hand off: pause the landing track the moment a feed video starts so the
     // two sounds never overlap. A re-tap on the landing player starts it again.
     const handoff = () => {
+      autoPausedRef.current = true;
       if (!audio.paused) {
         audio.pause();
         setPlaying(false);
@@ -133,11 +151,8 @@ export default function MusicPlayer() {
 
     // Dock action: start (or restart) the landing track from 1:42 on demand.
     const playCmd = () => {
-      ensureAnalyser(audio);
-      if (audio.currentTime < START_AT - 100 || audio.readyState === 0) {
-        try { audio.currentTime = START_AT; } catch {}
-      }
-      audio.play().catch(() => {});
+      autoPausedRef.current = false;
+      startFromIntro(audio);
     };
     window.addEventListener('aboutme:play-music', playCmd);
 
@@ -153,26 +168,46 @@ export default function MusicPlayer() {
     if (reduced) drawWaveform();
     else rafRef.current = requestAnimationFrame(draw);
 
-    // Desktop: autoplay from 1:42 with sound (muted-play would violate intent).
-    if (isDesktop()) {
-      const onReady = () => {
-        try { audio.currentTime = START_AT; } catch {}
-        ensureAnalyser(audio);
-        audio.play().catch(() => {});
-      };
-      if (audio.readyState >= 1) onReady();
-      else audio.addEventListener('canplay', onReady, { once: true });
-    }
+    // ---- LAYER 1 — immediate autoplay attempt on every device. Browsers with
+    // an autoplay policy (or prior engagement) will start the track with sound
+    // right on load. On restrictions this Promise rejects and we fall through.
+    const tryAutoplay = () => {
+      if (audio.paused && autoPausedRef.current) return;
+      startFromIntro(audio);
+    };
+    if (audio.readyState >= 1) tryAutoplay();
+    else audio.addEventListener('canplay', tryAutoplay, { once: true });
+
+    // ---- LAYER 2 — one-time page gesture fallback. The very first click /
+    // touch / keydown / scroll is a trusted user gesture, so retrying play()
+    // inside it is always permitted with sound. Only starts while the landing
+    // player is still on screen (so it never fights a playing video).
+    const gesture = (e) => {
+      // NOTE: we intentionally do NOT call preventDefault here. `play()` does
+      // not need it, and preventDefault on touchstart/pointerdown would block
+      // the very first scroll on mobile, breaking the feed.
+      const ctx = audioCtxRef.current;
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      if (!audio.paused) return; // already rolling
+      if (autoPausedRef.current || !visibleRef.current) return; // hand off decided
+      if (!startedRef.current) startFromIntro(audio);
+    };
+    const opts = { capture: true, passive: true, once: true };
+    document.addEventListener('pointerdown', gesture, opts);
+    document.addEventListener('touchstart', gesture, opts);
+    document.addEventListener('click', gesture, opts);
+    document.addEventListener('keydown', gesture, opts);
+    document.addEventListener('scroll', gesture, { capture: true, passive: true, once: true });
 
     return () => {
       window.removeEventListener('aboutme:video-playing', handoff);
       window.removeEventListener('aboutme:play-music', playCmd);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [drawWaveform, ensureAnalyser]);
+  }, [drawWaveform, ensureAnalyser, startFromIntro]);
 
-  // Pause when the landing player scrolls out of view so it never overlaps
-  // the audio of the videos that follow.
+  // Track landing visibility and pause when scrolled off so the landing track
+  // never overlaps the audio of the videos that follow.
   useEffect(() => {
     const root = rootRef.current;
     const audio = audioRef.current;
@@ -180,6 +215,7 @@ export default function MusicPlayer() {
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
+          visibleRef.current = entry.isIntersecting;
           if (!entry.isIntersecting && userStartedRef.current && !audio.paused) {
             audio.pause();
           }
@@ -194,17 +230,14 @@ export default function MusicPlayer() {
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    ensureAnalyser(audio);
     if (audio.paused) {
-      // Resume / start from the requested point.
-      if (audio.currentTime < START_AT - 100 || audio.readyState === 0) {
-        try { audio.currentTime = START_AT; } catch {}
-      }
-      audio.play().catch(() => {});
+      // User explicitly asked to start — clear any hand-off state.
+      autoPausedRef.current = false;
+      startFromIntro(audio);
     } else {
       audio.pause();
     }
-  }, [ensureAnalyser]);
+  }, [startFromIntro]);
 
   const seek = useCallback((e) => {
     const audio = audioRef.current;
