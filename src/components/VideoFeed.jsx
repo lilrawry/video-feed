@@ -4,8 +4,6 @@ import PrankTerminal from './PrankTerminal';
 import Intro from './Intro';
 import MacMenuBar from './MacMenuBar';
 import MacDock from './MacDock';
-import MobileShare from './MobileShare';
-import Toast from './Toast';
 import { useIsDesktop } from '../utils/useIsDesktop';
 
 const VIDEOS = [
@@ -35,39 +33,41 @@ export default function VideoFeed({ feedRef }) {
 
   const prankIndex = VIDEO_START + VIDEOS.length;
 
-  const prankDominant = useCallback(() => {
-    const prankEl = slideRefs.current[prankIndex];
-    if (!prankEl) return false;
-    const bounds = prankEl.getBoundingClientRect();
-    const mid = window.innerHeight / 2;
-    return bounds.top <= mid && bounds.bottom > mid;
-  }, [prankIndex]);
-
-  const findActiveSlide = useCallback(() => {
-    const mid = window.innerHeight / 2;
-    let best = 0;
-    let bestScore = -Infinity;
+  // Resolve which slide owns the viewport, with HYSTERESIS. Naive "nearest
+  // center" logic flips 1→2→1→2 for several frames while two slides are
+  // equally visible mid-fling, rapid-fire starting/pausing adjacent videos —
+  // which is the source of overlapping "mixed" audio on mobile. Rule: the
+  // currently-active slide keeps the crown until a challenger is BOTH more
+  // than half the viewport AND strictly more visible than it, so the switch
+  // happens exactly once per transition.
+  const resolveActive = useCallback(() => {
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    let best = -1;
+    let bestFrac = 0;
     slideRefs.current.forEach((el, i) => {
       if (!el) return;
-      const bounds = el.getBoundingClientRect();
-      const center = bounds.top + bounds.height / 2;
-      const score = -Math.abs(center - mid);
-      if (score > bestScore) {
-        bestScore = score;
+      const r = el.getBoundingClientRect();
+      const frac = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0)) / vh;
+      if (frac > bestFrac) {
+        bestFrac = frac;
         best = i;
       }
     });
-    return best;
-  }, []);
+    if (best < 0) return;
 
-  const resolveActive = useCallback(() => {
-    if (prankDominant()) {
-      if (activeSlideRef.current !== -1) setActiveSlide(-1);
+    const cur = activeSlideRef.current;
+    if (cur === best || cur === -1) {
+      setActiveSlide(best);
       return;
     }
-    const next = findActiveSlide();
-    if (activeSlideRef.current !== next) setActiveSlide(next);
-  }, [prankDominant, findActiveSlide]);
+    const curEl = slideRefs.current[cur];
+    let curFrac = 0;
+    if (curEl) {
+      const cr = curEl.getBoundingClientRect();
+      curFrac = Math.max(0, Math.min(cr.bottom, vh) - Math.max(cr.top, 0)) / vh;
+    }
+    if (bestFrac > 0.5 && bestFrac > curFrac) setActiveSlide(best);
+  }, []);
 
   // Map an absolute slide index to the video card index, or -1 if not a video.
   const slideToVideo = useCallback((slide) => {
@@ -95,22 +95,14 @@ export default function VideoFeed({ feedRef }) {
 
     // IntersectionObserver rooted at the feed is far more reliable than the
     // default viewport root inside a scroll-snap container on mobile Safari.
+    // Both it and the rAF scroll handler feed the same hysteresis resolver, so
+    // they can never disagree about which slide is active mid-fling.
     let observer = null;
     if ('IntersectionObserver' in window) {
-      observer = new IntersectionObserver(
-        (entries) => {
-          let hasVisible = false;
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              hasVisible = true;
-              const idx = slideRefs.current.indexOf(entry.target);
-              if (idx >= 0 && activeSlideRef.current !== idx) setActiveSlide(idx);
-            }
-          });
-          if (!hasVisible) resolveActive();
-        },
-        { root: feed, threshold: 0.5 }
-      );
+      observer = new IntersectionObserver(resolveActive, {
+        root: feed,
+        threshold: 0.5,
+      });
       slideRefs.current.forEach((el) => {
         if (el) observer.observe(el);
       });
@@ -286,9 +278,6 @@ export default function VideoFeed({ feedRef }) {
           />
         </>
       )}
-
-      {/* Touch devices have no dock — the share action moves to a small chip. */}
-      {!desktop && <MobileShare />}
     </div>
   );
 }

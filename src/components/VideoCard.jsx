@@ -77,6 +77,11 @@ export default function VideoCard({ src, index, isActive, onBecomeActive, total,
     } else if (didStart.current) {
       // Only pause videos we previously started, keeping memory light.
       if (!player.paused) player.pause();
+      // Mute immediately too: a play() promise that was still pending can
+      // resolve on some mobile WebKit builds and start audio anyway. Being
+      // muted means that late playback is silent, so sounds never overlap.
+      // startPlayer() re-syncs the mute state when the video returns.
+      try { player.muted = true; } catch {}
     }
   }, [isActive, startPlayer]);
 
