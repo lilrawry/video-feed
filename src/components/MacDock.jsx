@@ -1,4 +1,5 @@
 import { showToast } from './Toast';
+import { shareLink } from '../utils/shareLink';
 
 // macOS-style dock: a row of glossy icons that map to feed sections.
 // Clicking an icon scrolls the feed to that slide (or triggers a custom action).
@@ -15,19 +16,8 @@ const APPS = [
 
 export default function MacDock({ scrollToSlide, playMusic, activeSlide = 0, total = 1 }) {
   // Copy the current URL and confirm with a toast.
-  const share = () => {
-    const url = window.location.href;
-    const done = () => showToast('Link copied — share it!');
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(done, () => fallbackCopy(url) && done());
-      } else if (fallbackCopy(url)) {
-        done();
-      }
-    } catch {
-      fallbackCopy(url) && done();
-    }
-  };
+  const share = () =>
+    shareLink(window.location.href, () => showToast('Link copied — share it!'));
 
   return (
     <nav className="mac-dock" aria-label="Dock">
@@ -60,24 +50,6 @@ export default function MacDock({ scrollToSlide, playMusic, activeSlide = 0, tot
       </div>
     </nav>
   );
-}
-
-// Clipboard fallback for browsers without the async Clipboard API.
-function fallbackCopy(text) {
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'absolute';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return ok;
-  } catch {
-    return false;
-  }
 }
 
 function DockFace() {

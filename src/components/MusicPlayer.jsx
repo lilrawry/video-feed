@@ -48,7 +48,7 @@ export default function MusicPlayer() {
       if (!Ctx) return;
       if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
       const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       if (!analyserRef.current) {
         const source = ctx.createMediaElementSource(node);
         analyserRef.current = ctx.createAnalyser();
@@ -178,9 +178,14 @@ export default function MusicPlayer() {
     };
     window.addEventListener('aboutme:video-playing', handoff);
 
-    // Dock action: start (or restart) the landing track from 1:42 on demand.
+    // Dock action: (re)start the landing track from 1:42 on demand — always
+    // rewinds so the Music icon is a true "play my jam from the top" affordance,
+    // even if the track had been handed off mid-song by a video.
     const playCmd = () => {
       autoPausedRef.current = false;
+      if (audio.readyState >= 1) {
+        try { audio.currentTime = START_AT; } catch {}
+      }
       startFromIntro(audio, false);
       setNeedTap(false);
     };
@@ -212,9 +217,11 @@ export default function MusicPlayer() {
     if (audio.readyState >= 1) tryAutoplay();
     else audio.addEventListener('canplay', tryAutoplay, { once: true });
 
-    // iOS: if we're still muted (or blocked) one second in, prompt for a tap.
+    // iOS/Android or a blocked desktop: if we're still muted (or blocked) one
+    // second in AND the user never intentionally started/paused it, prompt for
+    // a tap. (A deliberate pause must not re-trigger this overlay.)
     const tapTimer = window.setTimeout(() => {
-      if (audio.paused || audio.muted) setNeedTap(true);
+      if (!userStartedRef.current && (audio.paused || audio.muted)) setNeedTap(true);
     }, 1000);
 
     // ---- LAYER 2 — one-time page gesture fallback. The very first click /

@@ -4,6 +4,7 @@ import PrankTerminal from './PrankTerminal';
 import Intro from './Intro';
 import MacMenuBar from './MacMenuBar';
 import MacDock from './MacDock';
+import MobileShare from './MobileShare';
 import Toast from './Toast';
 import { useIsDesktop } from '../utils/useIsDesktop';
 
@@ -285,6 +286,9 @@ export default function VideoFeed({ feedRef }) {
           />
         </>
       )}
+
+      {/* Touch devices have no dock — the share action moves to a small chip. */}
+      {!desktop && <MobileShare />}
     </div>
   );
 }

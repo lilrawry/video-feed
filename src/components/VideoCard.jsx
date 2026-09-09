@@ -91,6 +91,26 @@ export default function VideoCard({ src, index, isActive, onBecomeActive, total,
     }
   }, [soundUnlocked, isActive, startPlayer, unmuteWhenPlaying]);
 
+  // Chrome (desktop + Android) rejects play() while the media has no data yet,
+  // so a fast fling that lands on a still-buffering video would sit frozen
+  // until tapped. When we become active before the data is ready, wait for
+  // 'canplay' and then start — Firefox/iOS queue the play, but this is a no-op
+  // for them (audio already playing or the listener never fires late).
+  const isActiveRef = useRef(isActive);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
+
+  useEffect(() => {
+    const player = videoRef.current;
+    if (!player || !isActive) return undefined;
+    if (player.readyState >= 2) return undefined;
+    player.preload = 'auto';
+    const tryPlay = () => {
+      if (videoRef.current && isActiveRef.current) startPlayer();
+    };
+    player.addEventListener('canplay', tryPlay, { once: true });
+    return () => player.removeEventListener('canplay', tryPlay);
+  }, [isActive, startPlayer]);
+
   // Robust load: a single onError on a mobile network (or an iOS preload quirk)
   // is often transient. Retry a couple times with backoff before showing the
   // tap-to-retry fallback, and only ever show it for the slide the user is on.

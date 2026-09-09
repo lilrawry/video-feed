@@ -543,6 +543,46 @@ button { color: inherit; }
   pointer-events: none;
 }
 
+/* Touch-device share chip (the macOS dock — and its Share action — is
+   desktop-only chrome, so mobile gets its own copy-link affordance). */
+.share-chip {
+  position: fixed;
+  z-index: 20;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1.3rem, calc(env(safe-area-inset-bottom) + .5rem));
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .6rem .95rem;
+  border: 1px solid rgba(118, 229, 255, .35);
+  border-radius: 999px;
+  background: rgba(9, 7, 13, .85);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--cyan);
+  font-family: 'DM Mono', monospace;
+  font-size: .62rem;
+  letter-spacing: .08em;
+  text-transform: lowercase;
+  box-shadow: 0 0 0 1px rgba(118, 229, 255, .08), 0 8px 26px rgba(0, 0, 0, .5);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform .25s var(--ease), opacity .4s ease-in-out;
+}
+.share-chip svg {
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.share-chip:active { transform: scale(.94); }
+
 .scroll-hint {
   position: absolute;
   z-index: 3;
