@@ -5,32 +5,35 @@ import { useSound } from '../contexts/SoundContext';
 export default function VideoCard({ src, index, isActive, onBecomeActive }) {
   const videoRef = useRef(null);
   const [missing, setMissing] = useState(false);
-  const [showScrollHint, setShowScrollHint] = useState(index === 0);
-  const intentionallyPaused = useRef(false);
-  const { soundUnlocked, unlockSound, wasJustUnlocked } = useSound();
+  const didStart = useRef(false);
+  const { soundUnlocked } = useSound();
 
   const unmuteWhenPlaying = useCallback((player) => {
     let handled = false;
     const unmute = () => {
-      if (handled) return;
-      handled = true;
-      player.removeEventListener('playing', unmute);
-      try { player.muted = false; } catch {}
+      if (!handled) {
+        handled = true;
+        player.removeEventListener('playing', unmute);
+        try { player.muted = false; } catch {}
+      }
     };
     player.addEventListener('playing', unmute);
     window.setTimeout(unmute, 200);
   }, []);
 
+  // Start (or keep) this video rolling. Never mutes an already-playing video.
   const startPlayer = useCallback(() => {
     const player = videoRef.current;
     if (!player) return;
     try {
-      const alreadyPlaying = !player.paused;
-      if (alreadyPlaying) {
+      if (!player.paused) {
+        // Already rolling: just sync the mute state to current unlock level.
         if (soundUnlocked && player.muted) player.muted = false;
         return;
       }
-      player.muted = true;
+      // Play muted-first is guaranteed to succeed on every platform, then we
+      // unmute on the 'playing' event once sound is unlocked.
+      if (player.muted === false && !soundUnlocked) player.muted = true;
       safePlay(player);
       if (soundUnlocked) unmuteWhenPlaying(player);
     } catch {}
@@ -39,53 +42,30 @@ export default function VideoCard({ src, index, isActive, onBecomeActive }) {
   useEffect(() => {
     const player = videoRef.current;
     if (!player) return;
+    // Always preload the active video for a beautiful handoff.
+    player.preload = isActive ? 'auto' : player.preload;
 
     if (isActive) {
-      intentionallyPaused.current = false;
       startPlayer();
-    } else {
+      didStart.current = true;
+    } else if (didStart.current) {
+      // Only pause videos we previously started, keeping memory light.
       if (!player.paused) player.pause();
-      player.muted = true;
     }
   }, [isActive, startPlayer]);
 
+  // Re-sync sound the moment it is unlocked so the active video voices up live.
   useEffect(() => {
     const player = videoRef.current;
-    if (!player || !soundUnlocked) return;
-    if (isActive && !player.paused && player.muted) {
+    if (!player || !soundUnlocked || !isActive) return;
+    if (!player.paused && player.muted) {
       unmuteWhenPlaying(player);
+    } else if (player.paused) {
+      startPlayer();
     }
-  }, [soundUnlocked, isActive, unmuteWhenPlaying]);
+  }, [soundUnlocked, isActive, startPlayer, unmuteWhenPlaying]);
 
-  useEffect(() => {
-    const feed = document.querySelector('.video-feed');
-    if (!feed) return;
-    const handler = () => {
-      if (index === 0) setShowScrollHint(feed.scrollTop < 10);
-    };
-    feed.addEventListener('scroll', handler, { passive: true });
-    return () => feed.removeEventListener('scroll', handler);
-  }, [index]);
-
-  const handleClick = useCallback(() => {
-    const player = videoRef.current;
-    if (!player) return;
-
-    if (wasJustUnlocked()) return;
-
-    if (isActive) {
-      if (player.paused) {
-        intentionallyPaused.current = false;
-        startPlayer();
-      } else {
-        intentionallyPaused.current = true;
-        player.pause();
-      }
-    } else {
-      onBecomeActive(index);
-    }
-  }, [isActive, index, onBecomeActive, startPlayer, wasJustUnlocked]);
-
+  // Missing-video fallback state.
   const handleError = useCallback(() => setMissing(true), []);
   const handleLoadedData = useCallback(() => setMissing(false), []);
   const handleCanPlay = useCallback(() => setMissing(false), []);
@@ -100,7 +80,7 @@ export default function VideoCard({ src, index, isActive, onBecomeActive }) {
         playsInline
         loop
         preload={index === 0 ? 'auto' : 'metadata'}
-        onClick={handleClick}
+        onClick={() => onBecomeActive(index)}
         onError={handleError}
         onLoadedData={handleLoadedData}
         onCanPlay={handleCanPlay}
@@ -108,11 +88,6 @@ export default function VideoCard({ src, index, isActive, onBecomeActive }) {
       <p className={`video-missing${missing ? ' is-visible' : ''}`}>
         Add <strong>{src}</strong> to play this video.
       </p>
-      {showScrollHint && (
-        <div className="scroll-hint" aria-hidden="true">
-          <span>scroll up</span><b>&#8595;</b>
-        </div>
-      )}
     </article>
   );
 }

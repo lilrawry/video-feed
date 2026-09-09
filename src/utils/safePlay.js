@@ -9,10 +9,3 @@ export function safePlay(player) {
     // element gone / media not usable
   }
 }
-
-export function unpause(player) {
-  try {
-    if (!player || player.paused) return;
-    player.pause();
-  } catch {}
-}

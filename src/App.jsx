@@ -5,7 +5,6 @@ import UnmuteButton from './components/UnmuteButton';
 
 function AppInner() {
   const feedRef = useRef(null);
-  const { soundUnlocked, unlockSound } = useSound();
 
   const stepFeed = useCallback((dir) => {
     const feed = feedRef.current;
@@ -21,16 +20,7 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
-    const GESTURE_KEYS = [
-      'AudioVolumeUp', 'AudioVolumeDown', 'MediaPlayPause',
-      'MediaPlay', 'MediaStop', 'MediaNextTrack', 'MediaPreviousTrack',
-    ];
-
     const handler = (event) => {
-      if (GESTURE_KEYS.includes(event.key)) {
-        unlockSound();
-        return;
-      }
       if (event.altKey || event.ctrlKey || event.metaKey) return;
 
       const key = event.key;
@@ -51,13 +41,7 @@ function AppInner() {
 
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [stepFeed, unlockSound]);
-
-  useEffect(() => {
-    const handler = () => unlockSound();
-    document.addEventListener('click', handler, { passive: true });
-    return () => document.removeEventListener('click', handler);
-  }, [unlockSound]);
+  }, [stepFeed]);
 
   return (
     <main className="site-shell">
